@@ -2,7 +2,7 @@
  * Serial monitor tools
  */
 
-import type { MonitorResult } from '../types.js';
+import type { MonitorResult, MonitorVerificationProfile } from '../types.js';
 import {
   captureMonitorOutput,
   getPlatformIOBinaryPath,
@@ -21,17 +21,60 @@ function quoteShellValue(value: string): string {
 
 export function evaluateMonitorVerification(
   output: string[],
-  expectedPatterns?: string[]
+  profile?: MonitorVerificationProfile
 ): {
   verificationStatus: MonitorResult['verificationStatus'];
   matchedPatterns: string[];
+  healthSignals: string[];
+  degradedSignals: string[];
+  failureSignals: string[];
+  parsedJsonMessages: Record<string, unknown>[];
+  rawOutputExcerpt: string;
   failureCategory?: string;
   retryHint?: string;
 } {
-  if (!expectedPatterns || expectedPatterns.length === 0) {
+  const expectedPatterns = profile?.expectedPatterns ?? [];
+  const expectedJsonFields = profile?.expectedJsonFields ?? [];
+  const expectedJsonNonNull = profile?.expectedJsonNonNull ?? [];
+  const expectedJsonValues = profile?.expectedJsonValues ?? {};
+  const allowedNullFields = new Set(profile?.allowedNullFields ?? []);
+  const minJsonMessages = profile?.minJsonMessages ?? 0;
+  const expectedCycleSeconds = profile?.expectedCycleSeconds;
+  const expectedCycleToleranceSeconds =
+    profile?.expectedCycleToleranceSeconds ?? 0;
+  const healthSignals: string[] = [];
+  const degradedSignals: string[] = [];
+  const failureSignals: string[] = [];
+  const rawOutputExcerpt = output.join('\n').slice(0, 1200);
+
+  const parsedJsonMessages = output
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('{') && line.endsWith('}'))
+    .map((line) => {
+      try {
+        return JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((row): row is Record<string, unknown> => Boolean(row));
+
+  if (
+    expectedPatterns.length === 0 &&
+    expectedJsonFields.length === 0 &&
+    expectedJsonNonNull.length === 0 &&
+    Object.keys(expectedJsonValues).length === 0 &&
+    minJsonMessages === 0 &&
+    expectedCycleSeconds === undefined
+  ) {
     return {
       verificationStatus: 'not_requested',
       matchedPatterns: [],
+      healthSignals,
+      degradedSignals,
+      failureSignals,
+      parsedJsonMessages,
+      rawOutputExcerpt,
     };
   }
 
@@ -39,6 +82,11 @@ export function evaluateMonitorVerification(
     return {
       verificationStatus: 'indeterminate',
       matchedPatterns: [],
+      healthSignals,
+      degradedSignals,
+      failureSignals: ['no_output'],
+      parsedJsonMessages,
+      rawOutputExcerpt,
       failureCategory: 'no_output',
       retryHint: 'increase_capture_window_or_check_port',
     };
@@ -55,6 +103,11 @@ export function evaluateMonitorVerification(
     return {
       verificationStatus: 'indeterminate',
       matchedPatterns: [],
+      healthSignals,
+      degradedSignals,
+      failureSignals: ['serial_port_busy'],
+      parsedJsonMessages,
+      rawOutputExcerpt,
       failureCategory: 'port_unavailable',
       retryHint: 'close_serial_consumers_and_retry',
     };
@@ -63,19 +116,220 @@ export function evaluateMonitorVerification(
   const matchedPatterns = expectedPatterns.filter((pattern) =>
     joined.includes(pattern)
   );
+  const missingPatterns = expectedPatterns.filter(
+    (pattern) => !matchedPatterns.includes(pattern)
+  );
+  if (expectedPatterns.length > 0 && missingPatterns.length === 0) {
+    healthSignals.push('expected_patterns_matched');
+  }
+  for (const pattern of missingPatterns) {
+    failureSignals.push(`missing_expected_pattern:${pattern}`);
+  }
 
-  if (matchedPatterns.length > 0) {
+  const jsonFieldChecksPass =
+    expectedJsonFields.length === 0 ||
+    parsedJsonMessages.some((row) =>
+      expectedJsonFields.every((field) =>
+        Object.prototype.hasOwnProperty.call(row, field)
+      )
+    );
+  const missingJsonFields = expectedJsonFields.filter(
+    (field) =>
+      !parsedJsonMessages.some((row) =>
+        Object.prototype.hasOwnProperty.call(row, field)
+      )
+  );
+  if (expectedJsonFields.length > 0 && jsonFieldChecksPass) {
+    healthSignals.push('json_fields_present');
+  }
+  for (const field of missingJsonFields) {
+    failureSignals.push(`missing_json_field:${field}`);
+  }
+
+  const jsonNonNullChecksPass =
+    expectedJsonNonNull.length === 0 ||
+    parsedJsonMessages.some((row) =>
+      expectedJsonNonNull.every(
+        (field) =>
+          Object.prototype.hasOwnProperty.call(row, field) &&
+          row[field] !== null &&
+          row[field] !== undefined
+      )
+    );
+  const nullJsonFields = expectedJsonNonNull.filter(
+    (field) =>
+      !parsedJsonMessages.some(
+        (row) =>
+          Object.prototype.hasOwnProperty.call(row, field) &&
+          row[field] !== null &&
+          row[field] !== undefined
+      )
+  );
+  if (expectedJsonNonNull.length > 0 && jsonNonNullChecksPass) {
+    healthSignals.push('json_non_null_fields_present');
+  }
+  for (const field of nullJsonFields) {
+    failureSignals.push(`null_json_field:${field}`);
+  }
+
+  const jsonValueChecksPass =
+    Object.keys(expectedJsonValues).length === 0 ||
+    parsedJsonMessages.some((row) =>
+      Object.entries(expectedJsonValues).every(
+        ([field, expectedValue]) => row[field] === expectedValue
+      )
+    );
+  const mismatchedJsonValues = Object.entries(expectedJsonValues)
+    .filter(
+      ([field, expectedValue]) =>
+        !parsedJsonMessages.some((row) => row[field] === expectedValue)
+    )
+    .map(([field]) => field);
+  if (Object.keys(expectedJsonValues).length > 0 && jsonValueChecksPass) {
+    healthSignals.push('json_values_match');
+  }
+  for (const field of mismatchedJsonValues) {
+    failureSignals.push(`json_value_mismatch:${field}`);
+  }
+
+  const jsonCountChecksPass =
+    minJsonMessages === 0 || parsedJsonMessages.length >= minJsonMessages;
+  if (minJsonMessages > 0) {
+    if (jsonCountChecksPass) {
+      healthSignals.push('json_message_count_sufficient');
+    } else {
+      failureSignals.push('insufficient_json_messages');
+    }
+  }
+
+  let cycleChecksPass = expectedCycleSeconds === undefined;
+  if (
+    expectedCycleSeconds !== undefined &&
+    parsedJsonMessages.length >= Math.max(2, minJsonMessages)
+  ) {
+    const timestamps = parsedJsonMessages
+      .map((row) => row.timestamp)
+      .filter((value): value is number => typeof value === 'number');
+    if (timestamps.length >= 2) {
+      const deltas = timestamps
+        .slice(1)
+        .map((value, index) => value - timestamps[index]);
+      cycleChecksPass = deltas.every(
+        (delta) =>
+          Math.abs(delta - expectedCycleSeconds) <=
+          expectedCycleToleranceSeconds
+      );
+      const strictlyIncreasing = deltas.every((delta) => delta > 0);
+      if (strictlyIncreasing && cycleChecksPass) {
+        healthSignals.push('node_loop_healthy');
+      } else if (!strictlyIncreasing) {
+        failureSignals.push('node_output_stalled');
+      } else {
+        failureSignals.push('unexpected_cycle_timing');
+      }
+    } else {
+      cycleChecksPass = false;
+      failureSignals.push('insufficient_json_messages');
+    }
+  }
+
+  if (parsedJsonMessages.length > 0) {
+    healthSignals.push('node_online_basic');
+  }
+
+  const lastJson = parsedJsonMessages[parsedJsonMessages.length - 1];
+  if (
+    lastJson &&
+    ['air_temp', 'air_humidity', 'soil_moisture'].every(
+      (field) => lastJson[field] !== null && lastJson[field] !== undefined
+    )
+  ) {
+    healthSignals.push('sensor_core_present');
+  }
+  if (
+    lastJson?.device_id !== undefined &&
+    Object.keys(expectedJsonValues).includes('device_id') &&
+    lastJson.device_id === expectedJsonValues.device_id
+  ) {
+    healthSignals.push('device_identity_match');
+  }
+
+  if (lastJson) {
+    for (const field of allowedNullFields) {
+      if (allowedNullFields.has(field) && lastJson[field] === null) {
+        degradedSignals.push(`allowed_null_field:${field}`);
+      }
+    }
+  }
+
+  const patternChecksPass =
+    expectedPatterns.length === 0 || missingPatterns.length === 0;
+
+  const fullyMatched =
+    patternChecksPass &&
+    jsonFieldChecksPass &&
+    jsonNonNullChecksPass &&
+    jsonValueChecksPass &&
+    jsonCountChecksPass &&
+    cycleChecksPass &&
+    !failureSignals.includes('node_output_stalled');
+
+  if (fullyMatched) {
     return {
-      verificationStatus: 'matched',
+      verificationStatus: degradedSignals.length > 0 ? 'degraded' : 'healthy',
       matchedPatterns,
+      healthSignals,
+      degradedSignals,
+      failureSignals,
+      parsedJsonMessages,
+      rawOutputExcerpt,
+    };
+  }
+
+  const indeterminateFailures = [
+    'no_output',
+    'serial_port_busy',
+    'insufficient_json_messages',
+  ];
+  if (
+    failureSignals.length > 0 &&
+    failureSignals.every((signal) => indeterminateFailures.includes(signal))
+  ) {
+    return {
+      verificationStatus: 'indeterminate',
+      matchedPatterns,
+      healthSignals,
+      degradedSignals,
+      failureSignals,
+      parsedJsonMessages,
+      rawOutputExcerpt,
+      failureCategory: failureSignals.includes('serial_port_busy')
+        ? 'port_unavailable'
+        : 'insufficient_runtime_evidence',
+      retryHint: failureSignals.includes('serial_port_busy')
+        ? 'close_serial_consumers_and_retry'
+        : 'increase_capture_window_or_collect_more_messages',
     };
   }
 
   return {
-    verificationStatus: 'not_matched',
-    matchedPatterns: [],
-    failureCategory: 'expected_output_not_found',
-    retryHint: 'review_firmware_output_or_retry_capture',
+    verificationStatus: 'failed',
+    matchedPatterns,
+    healthSignals,
+    degradedSignals,
+    failureSignals,
+    parsedJsonMessages,
+    rawOutputExcerpt,
+    failureCategory: failureSignals.includes('node_output_stalled')
+      ? 'node_output_stalled'
+      : failureSignals.includes('unexpected_cycle_timing')
+        ? 'unexpected_cycle_timing'
+        : 'expected_output_not_found',
+    retryHint: failureSignals.includes('node_output_stalled')
+      ? 'retry_capture_and_check_firmware_loop'
+      : failureSignals.includes('unexpected_cycle_timing')
+        ? 'review_sampling_loop_timing'
+        : 'review_firmware_output_or_retry_capture',
   };
 }
 
@@ -151,7 +405,14 @@ export async function startMonitor(
   filters?: string[],
   raw?: boolean,
   eol?: 'CR' | 'LF' | 'CRLF',
-  expectedPatterns?: string[]
+  expectedPatterns?: string[],
+  expectedJsonFields?: string[],
+  expectedJsonNonNull?: string[],
+  expectedJsonValues?: Record<string, string | number | boolean | null>,
+  allowedNullFields?: string[],
+  expectedCycleSeconds?: number,
+  expectedCycleToleranceSeconds?: number,
+  minJsonMessages?: number
 ): Promise<MonitorResult> {
   const explicitPort = port;
 
@@ -215,10 +476,16 @@ export async function startMonitor(
       durationMs: captureDurationMs,
       maxLines,
     });
-    const verification = evaluateMonitorVerification(
-      capture.output,
-      expectedPatterns
-    );
+    const verification = evaluateMonitorVerification(capture.output, {
+      expectedPatterns,
+      expectedJsonFields,
+      expectedJsonNonNull,
+      expectedJsonValues,
+      allowedNullFields,
+      expectedCycleSeconds,
+      expectedCycleToleranceSeconds,
+      minJsonMessages,
+    });
 
     return {
       success: true,
@@ -226,6 +493,7 @@ export async function startMonitor(
       command: capture.command,
       mode: 'capture',
       resolvedPort: port,
+      resolvedBaud: baud,
       resolvedEnvironment: resolvedEnvironment?.name,
       resolutionSource: explicitPort
         ? 'explicit_argument'
@@ -244,6 +512,11 @@ export async function startMonitor(
             : 'captured_output',
       verificationStatus: verification.verificationStatus,
       matchedPatterns: verification.matchedPatterns,
+      healthSignals: verification.healthSignals,
+      degradedSignals: verification.degradedSignals,
+      failureSignals: verification.failureSignals,
+      parsedJsonMessages: verification.parsedJsonMessages,
+      rawOutputExcerpt: verification.rawOutputExcerpt,
       failureCategory: verification.failureCategory,
       retryHint: verification.retryHint,
       output: capture.output,
@@ -265,6 +538,7 @@ export async function startMonitor(
     command,
     mode: 'instructions',
     resolvedPort: port,
+    resolvedBaud: baud,
     resolvedEnvironment: resolvedEnvironment?.name,
     resolutionSource: explicitPort
       ? 'explicit_argument'

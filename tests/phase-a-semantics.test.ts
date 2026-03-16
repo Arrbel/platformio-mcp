@@ -55,11 +55,12 @@ describe('phase A semantics', () => {
   it('marks monitor verification as matched when expected output is captured', () => {
     const verification = evaluateMonitorVerification(
       ['BOOT_OK', 'HEARTBEAT 1'],
-      ['BOOT_OK']
+      { expectedPatterns: ['BOOT_OK'] }
     );
 
-    expect(verification.verificationStatus).toBe('matched');
+    expect(verification.verificationStatus).toBe('healthy');
     expect(verification.matchedPatterns).toEqual(['BOOT_OK']);
+    expect(verification.healthSignals).toContain('expected_patterns_matched');
   });
 
   it('treats monitor port-open errors as transport failures instead of missed output', () => {
@@ -67,12 +68,80 @@ describe('phase A semantics', () => {
       [
         "UserSideException: could not open port 'COM9': PermissionError(13, '拒绝访问。', None, 5)",
       ],
-      ['BOOT_OK']
+      { expectedPatterns: ['BOOT_OK'] }
     );
 
     expect(verification.verificationStatus).toBe('indeterminate');
     expect(verification.failureCategory).toBe('port_unavailable');
     expect(verification.retryHint).toBe('close_serial_consumers_and_retry');
+    expect(verification.failureSignals).toContain('serial_port_busy');
+  });
+
+  it('evaluates JSON-based health and degraded signals from a generic profile', () => {
+    const verification = evaluateMonitorVerification(
+      [
+        '━━━━━━ JSON 输出 ━━━━━━',
+        '{"device_id":1001,"timestamp":100,"air_temp":16.1,"air_humidity":53.4,"soil_moisture":0,"light":null,"co2":null,"tvoc":null}',
+        '{"device_id":1001,"timestamp":105,"air_temp":16.1,"air_humidity":53.4,"soil_moisture":0,"light":null,"co2":null,"tvoc":null}',
+      ],
+      {
+        expectedPatterns: ['JSON 输出'],
+        expectedJsonFields: [
+          'device_id',
+          'timestamp',
+          'air_temp',
+          'air_humidity',
+          'soil_moisture',
+        ],
+        expectedJsonNonNull: ['air_temp', 'air_humidity', 'soil_moisture'],
+        expectedJsonValues: { device_id: 1001 },
+        allowedNullFields: ['light', 'co2', 'tvoc'],
+        expectedCycleSeconds: 5,
+        expectedCycleToleranceSeconds: 1,
+        minJsonMessages: 2,
+      }
+    );
+
+    expect(verification.verificationStatus).toBe('degraded');
+    expect(verification.healthSignals).toEqual(
+      expect.arrayContaining([
+        'node_online_basic',
+        'node_loop_healthy',
+        'sensor_core_present',
+        'device_identity_match',
+        'json_fields_present',
+        'json_non_null_fields_present',
+        'json_values_match',
+        'json_message_count_sufficient',
+      ])
+    );
+    expect(verification.degradedSignals).toEqual(
+      expect.arrayContaining([
+        'allowed_null_field:light',
+        'allowed_null_field:co2',
+        'allowed_null_field:tvoc',
+      ])
+    );
+    expect(verification.parsedJsonMessages).toHaveLength(2);
+  });
+
+  it('reports stalled output as a failure when JSON timestamps stop increasing', () => {
+    const verification = evaluateMonitorVerification(
+      [
+        '{"device_id":1001,"timestamp":100,"air_temp":16.1,"air_humidity":53.4,"soil_moisture":0,"light":null,"co2":null,"tvoc":null}',
+        '{"device_id":1001,"timestamp":100,"air_temp":16.1,"air_humidity":53.4,"soil_moisture":0,"light":null,"co2":null,"tvoc":null}',
+      ],
+      {
+        expectedJsonFields: ['device_id', 'timestamp'],
+        minJsonMessages: 2,
+        expectedCycleSeconds: 5,
+        expectedCycleToleranceSeconds: 1,
+      }
+    );
+
+    expect(verification.verificationStatus).toBe('failed');
+    expect(verification.failureCategory).toBe('node_output_stalled');
+    expect(verification.failureSignals).toContain('node_output_stalled');
   });
 
   it('derives doctor readiness from project and device evidence', () => {

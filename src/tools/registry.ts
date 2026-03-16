@@ -393,6 +393,13 @@ const toolRegistry: ToolDefinition[] = [
         raw: { type: 'boolean' },
         eol: { type: 'string', enum: ['CR', 'LF', 'CRLF'] },
         expectedPatterns: { type: 'array', items: { type: 'string' } },
+        expectedJsonFields: { type: 'array', items: { type: 'string' } },
+        expectedJsonNonNull: { type: 'array', items: { type: 'string' } },
+        expectedJsonValues: { type: 'object' },
+        allowedNullFields: { type: 'array', items: { type: 'string' } },
+        expectedCycleSeconds: { type: 'number' },
+        expectedCycleToleranceSeconds: { type: 'number' },
+        minJsonMessages: { type: 'number' },
       },
     },
     paramsSchema: StartMonitorParamsSchema,
@@ -407,7 +414,14 @@ const toolRegistry: ToolDefinition[] = [
         args.filters,
         args.raw,
         args.eol,
-        args.expectedPatterns
+        args.expectedPatterns,
+        args.expectedJsonFields,
+        args.expectedJsonNonNull,
+        args.expectedJsonValues,
+        args.allowedNullFields,
+        args.expectedCycleSeconds,
+        args.expectedCycleToleranceSeconds,
+        args.minJsonMessages
       );
       return createToolResponse({
         status: 'ok',

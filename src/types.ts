@@ -243,6 +243,7 @@ export interface MonitorResult {
   command?: string;
   mode?: 'instructions' | 'capture';
   resolvedPort?: string;
+  resolvedBaud?: number;
   resolvedEnvironment?: string;
   resolutionSource?: string;
   monitorStatus?:
@@ -252,15 +253,32 @@ export interface MonitorResult {
     | 'timeout'
     | 'port_open_failed';
   verificationStatus?:
-    | 'matched'
-    | 'not_matched'
+    | 'healthy'
+    | 'degraded'
+    | 'failed'
     | 'not_requested'
     | 'indeterminate';
   matchedPatterns?: string[];
+  healthSignals?: string[];
+  degradedSignals?: string[];
+  failureSignals?: string[];
+  parsedJsonMessages?: Record<string, unknown>[];
+  rawOutputExcerpt?: string;
   failureCategory?: string;
   retryHint?: string;
   output?: string[];
   timedOut?: boolean;
+}
+
+export interface MonitorVerificationProfile {
+  expectedPatterns?: string[];
+  expectedJsonFields?: string[];
+  expectedJsonNonNull?: string[];
+  expectedJsonValues?: Record<string, string | number | boolean | null>;
+  allowedNullFields?: string[];
+  expectedCycleSeconds?: number;
+  expectedCycleToleranceSeconds?: number;
+  minJsonMessages?: number;
 }
 
 // ============================================================================
@@ -525,6 +543,45 @@ export const StartMonitorParamsSchema = z.object({
     .optional()
     .describe(
       'Optional output snippets that confirm the firmware is running as expected'
+    ),
+  expectedJsonFields: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Optional JSON fields that must exist in captured runtime output'
+    ),
+  expectedJsonNonNull: z
+    .array(z.string())
+    .optional()
+    .describe('Optional JSON fields that must be present and non-null'),
+  expectedJsonValues: z
+    .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional()
+    .describe(
+      'Optional JSON field/value pairs that must match captured runtime output'
+    ),
+  allowedNullFields: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Optional JSON fields that may be null without failing verification'
+    ),
+  expectedCycleSeconds: z
+    .number()
+    .positive()
+    .optional()
+    .describe('Optional expected interval between captured runtime messages'),
+  expectedCycleToleranceSeconds: z
+    .number()
+    .nonnegative()
+    .optional()
+    .describe('Allowed drift around expectedCycleSeconds'),
+  minJsonMessages: z
+    .number()
+    .positive()
+    .optional()
+    .describe(
+      'Minimum number of captured JSON messages required for verification'
     ),
 });
 
