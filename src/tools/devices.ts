@@ -25,11 +25,14 @@ export async function listDevices(): Promise<SerialDevice[]> {
     // Handle gracefully by returning empty array
     if (error instanceof PlatformIOError) {
       const errorMessage = error.message.toLowerCase();
-      if (errorMessage.includes('no devices') || errorMessage.includes('empty')) {
+      if (
+        errorMessage.includes('no devices') ||
+        errorMessage.includes('empty')
+      ) {
         return [];
       }
     }
-    
+
     throw new PlatformIOError(
       `Failed to list devices: ${error}`,
       'LIST_DEVICES_FAILED'
@@ -40,9 +43,11 @@ export async function listDevices(): Promise<SerialDevice[]> {
 /**
  * Finds a device by port path
  */
-export async function findDeviceByPort(port: string): Promise<SerialDevice | null> {
+export async function findDeviceByPort(
+  port: string
+): Promise<SerialDevice | null> {
   const devices = await listDevices();
-  return devices.find(device => device.port === port) || null;
+  return devices.find((device) => device.port === port) || null;
 }
 
 /**
@@ -64,11 +69,13 @@ export async function hasConnectedDevices(): Promise<boolean> {
 /**
  * Lists devices filtered by description (useful for finding specific board types)
  */
-export async function findDevicesByDescription(searchTerm: string): Promise<SerialDevice[]> {
+export async function findDevicesByDescription(
+  searchTerm: string
+): Promise<SerialDevice[]> {
   const devices = await listDevices();
   const searchLower = searchTerm.toLowerCase();
-  
-  return devices.filter(device => 
+
+  return devices.filter((device) =>
     device.description.toLowerCase().includes(searchLower)
   );
 }
@@ -76,11 +83,13 @@ export async function findDevicesByDescription(searchTerm: string): Promise<Seri
 /**
  * Lists devices filtered by hardware ID
  */
-export async function findDevicesByHardwareId(searchTerm: string): Promise<SerialDevice[]> {
+export async function findDevicesByHardwareId(
+  searchTerm: string
+): Promise<SerialDevice[]> {
   const devices = await listDevices();
   const searchLower = searchTerm.toLowerCase();
-  
-  return devices.filter(device => 
+
+  return devices.filter((device) =>
     device.hwid.toLowerCase().includes(searchLower)
   );
 }

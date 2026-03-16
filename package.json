@@ -1,6 +1,6 @@
 {
   "name": "platformio-mcp-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A board-agnostic MCP server for PlatformIO embedded development - supports 1000+ boards across 30+ platforms",
   "type": "module",
   "main": "build/index.js",
@@ -14,9 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src/**/*.ts",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"README.md\" \"llms-install.md\" \".github/workflows/*.yml\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"README.md\" \"llms-install.md\" \".github/workflows/*.yml\"",
     "prepare": "npm run build"
   },
   "keywords": [
@@ -46,6 +46,7 @@
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
+    "@vitest/coverage-v8": "^1.6.1",
     "@vitest/ui": "^1.0.0",
     "eslint": "^8.56.0",
     "prettier": "^3.1.0",
@@ -55,10 +56,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/platformio-mcp-server.git"
+    "url": "https://github.com/Arrbel/platformio-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/platformio-mcp-server/issues"
+    "url": "https://github.com/Arrbel/platformio-mcp/issues"
   },
-  "homepage": "https://github.com/yourusername/platformio-mcp-server#readme"
+  "homepage": "https://github.com/Arrbel/platformio-mcp#readme"
 }

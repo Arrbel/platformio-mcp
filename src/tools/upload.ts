@@ -4,9 +4,17 @@
 
 import { platformioExecutor } from '../platformio.js';
 import type { UploadResult } from '../types.js';
-import { validateProjectPath, validateEnvironmentName, validateSerialPort } from '../utils/validation.js';
+import {
+  validateProjectPath,
+  validateEnvironmentName,
+  validateSerialPort,
+} from '../utils/validation.js';
 import { UploadError, PlatformIOError } from '../utils/errors.js';
 import { parseStderrErrors } from '../utils/errors.js';
+import {
+  assertProjectEnvironmentExists,
+  resolveProjectEnvironment,
+} from './projects.js';
 
 /**
  * Uploads firmware to a connected device
@@ -19,7 +27,9 @@ export async function uploadFirmware(
   const validatedPath = validateProjectPath(projectDir);
 
   if (environment && !validateEnvironmentName(environment)) {
-    throw new UploadError(`Invalid environment name: ${environment}`, { environment });
+    throw new UploadError(`Invalid environment name: ${environment}`, {
+      environment,
+    });
   }
 
   if (port && !validateSerialPort(port)) {
@@ -27,6 +37,13 @@ export async function uploadFirmware(
   }
 
   try {
+    await assertProjectEnvironmentExists(validatedPath, environment);
+    const resolvedEnvironment = await resolveProjectEnvironment(
+      validatedPath,
+      environment
+    );
+    const resolvedPort = port ?? resolvedEnvironment?.uploadPort;
+
     const args: string[] = ['run', '--target', 'upload'];
 
     // Add environment if specified
@@ -35,8 +52,8 @@ export async function uploadFirmware(
     }
 
     // Add upload port if specified
-    if (port) {
-      args.push('--upload-port', port);
+    if (resolvedPort) {
+      args.push('--upload-port', resolvedPort);
     }
 
     const result = await platformioExecutor.execute('run', args.slice(1), {
@@ -49,21 +66,23 @@ export async function uploadFirmware(
 
     return {
       success,
-      port,
+      port: resolvedPort,
       output: result.stdout,
       errors,
     };
   } catch (error) {
     if (error instanceof PlatformIOError) {
-      throw new UploadError(
-        `Upload failed: ${error.message}`,
-        { projectDir, port, environment }
-      );
+      throw new UploadError(`Upload failed: ${error.message}`, {
+        projectDir,
+        port,
+        environment,
+      });
     }
-    throw new UploadError(
-      `Failed to upload firmware: ${error}`,
-      { projectDir, port, environment }
-    );
+    throw new UploadError(`Failed to upload firmware: ${error}`, {
+      projectDir,
+      port,
+      environment,
+    });
   }
 }
 
@@ -78,7 +97,9 @@ export async function uploadAndMonitor(
   const validatedPath = validateProjectPath(projectDir);
 
   if (environment && !validateEnvironmentName(environment)) {
-    throw new UploadError(`Invalid environment name: ${environment}`, { environment });
+    throw new UploadError(`Invalid environment name: ${environment}`, {
+      environment,
+    });
   }
 
   if (port && !validateSerialPort(port)) {
@@ -86,15 +107,22 @@ export async function uploadAndMonitor(
   }
 
   try {
+    await assertProjectEnvironmentExists(validatedPath, environment);
+    const resolvedEnvironment = await resolveProjectEnvironment(
+      validatedPath,
+      environment
+    );
+    const resolvedPort = port ?? resolvedEnvironment?.uploadPort;
+
     const args: string[] = ['run', '--target', 'upload', '--target', 'monitor'];
 
     if (environment) {
       args.push('--environment', environment);
     }
 
-    if (port) {
-      args.push('--upload-port', port);
-      args.push('--monitor-port', port);
+    if (resolvedPort) {
+      args.push('--upload-port', resolvedPort);
+      args.push('--monitor-port', resolvedPort);
     }
 
     const result = await platformioExecutor.execute('run', args.slice(1), {
@@ -107,21 +135,23 @@ export async function uploadAndMonitor(
 
     return {
       success,
-      port,
+      port: resolvedPort,
       output: result.stdout,
       errors,
     };
   } catch (error) {
     if (error instanceof PlatformIOError) {
-      throw new UploadError(
-        `Upload and monitor failed: ${error.message}`,
-        { projectDir, port, environment }
-      );
+      throw new UploadError(`Upload and monitor failed: ${error.message}`, {
+        projectDir,
+        port,
+        environment,
+      });
     }
-    throw new UploadError(
-      `Failed to upload and monitor: ${error}`,
-      { projectDir, port, environment }
-    );
+    throw new UploadError(`Failed to upload and monitor: ${error}`, {
+      projectDir,
+      port,
+      environment,
+    });
   }
 }
 

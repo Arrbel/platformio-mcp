@@ -29,6 +29,7 @@ export interface BoardInfo {
   frameworks?: string[];
   vendor?: string;
   url?: string;
+  raw?: Record<string, unknown>;
 }
 
 export const BoardInfoSchema = z.object({
@@ -42,10 +43,30 @@ export const BoardInfoSchema = z.object({
   frameworks: z.array(z.string()).optional(),
   vendor: z.string().optional(),
   url: z.string().optional(),
+  raw: z.record(z.unknown()).optional(),
 });
 
-// PlatformIO boards JSON output is an array of board objects
 export const BoardsArraySchema = z.array(BoardInfoSchema);
+
+export const PlatformIOBoardRawSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    platform: z.string(),
+    mcu: z.string(),
+    frameworks: z.array(z.string()).optional(),
+    vendor: z.string().optional(),
+    url: z.string().optional(),
+    fcpu: z.number().optional(),
+    rom: z.number().optional(),
+    ram: z.number().optional(),
+    frequency: z.union([z.string(), z.number()]).optional(),
+    flash: z.number().optional(),
+  })
+  .passthrough();
+
+export type PlatformIOBoardRaw = z.infer<typeof PlatformIOBoardRawSchema>;
+export const PlatformIOBoardsRawArraySchema = z.array(PlatformIOBoardRawSchema);
 
 // ============================================================================
 // Device Types
@@ -88,6 +109,46 @@ export interface ProjectInitResult {
   path: string;
   message: string;
 }
+
+export interface ProjectEnvironmentSummary {
+  name: string;
+  platform?: string;
+  board?: string;
+  framework?: string;
+  monitorPort?: string;
+  monitorSpeed?: number;
+  uploadPort?: string;
+  isDefault: boolean;
+  options: Record<string, string>;
+}
+
+export const ProjectEnvironmentSummarySchema = z.object({
+  name: z.string(),
+  platform: z.string().optional(),
+  board: z.string().optional(),
+  framework: z.string().optional(),
+  monitorPort: z.string().optional(),
+  monitorSpeed: z.number().optional(),
+  uploadPort: z.string().optional(),
+  isDefault: z.boolean(),
+  options: z.record(z.string()),
+});
+
+export interface ProjectInspection {
+  projectDir: string;
+  platformioIniPath: string;
+  isPlatformIOProject: boolean;
+  defaultEnvironments: string[];
+  environments: ProjectEnvironmentSummary[];
+}
+
+export const ProjectInspectionSchema = z.object({
+  projectDir: z.string(),
+  platformioIniPath: z.string(),
+  isPlatformIOProject: z.boolean(),
+  defaultEnvironments: z.array(z.string()),
+  environments: z.array(ProjectEnvironmentSummarySchema),
+});
 
 // ============================================================================
 // Build Types
@@ -148,6 +209,9 @@ export interface MonitorResult {
   success: boolean;
   message: string;
   command?: string;
+  mode?: 'instructions' | 'capture';
+  output?: string[];
+  timedOut?: boolean;
 }
 
 // ============================================================================
@@ -166,7 +230,7 @@ export interface LibraryRepository {
 }
 
 export interface LibraryInfo {
-  id: number;
+  id?: number;
   name: string;
   description?: string;
   keywords?: string[];
@@ -179,7 +243,7 @@ export interface LibraryInfo {
 }
 
 export const LibraryInfoSchema = z.object({
-  id: z.number(),
+  id: z.number().optional(),
   name: z.string(),
   description: z.string().optional(),
   keywords: z.array(z.string()).optional(),
@@ -205,6 +269,12 @@ export const LibraryInfoSchema = z.object({
 });
 
 export const LibrariesArraySchema = z.array(LibraryInfoSchema);
+export const PlatformIOLibrarySearchResponseSchema = z.object({
+  page: z.number().optional(),
+  perpage: z.number().optional(),
+  total: z.number().optional(),
+  items: z.array(z.record(z.unknown())),
+});
 
 export interface LibrarySearchConfig {
   query: string;
@@ -249,13 +319,44 @@ export interface PlatformInfo {
   packages?: string[];
 }
 
+export interface ToolNextAction {
+  tool: string;
+  reason: string;
+  arguments?: Record<string, unknown>;
+}
+
+export interface ToolResponse<TData = unknown> {
+  status: 'ok' | 'warning' | 'error';
+  summary: string;
+  data: TData;
+  warnings: string[];
+  nextActions: ToolNextAction[];
+}
+
+export interface DoctorReport {
+  nodeVersion: string;
+  platformio: {
+    installed: boolean;
+    version?: string;
+  };
+  project?: ProjectInspection;
+  devices: {
+    count: number;
+    items: SerialDevice[];
+  };
+  warnings: string[];
+}
+
 // ============================================================================
 // MCP Tool Parameter Schemas
 // ============================================================================
 
 // List boards parameters
 export const ListBoardsParamsSchema = z.object({
-  filter: z.string().optional().describe('Optional filter by platform, framework, or MCU'),
+  filter: z
+    .string()
+    .optional()
+    .describe('Optional filter by platform, framework, or MCU'),
 });
 
 // Get board info parameters
@@ -266,50 +367,139 @@ export const GetBoardInfoParamsSchema = z.object({
 // Init project parameters
 export const InitProjectParamsSchema = z.object({
   board: z.string().min(1).describe('Board ID for the project'),
-  framework: z.string().optional().describe('Framework to use (e.g., arduino, espidf)'),
-  projectDir: z.string().describe('Directory path where the project should be created'),
-  platformOptions: z.record(z.string()).optional().describe('Additional platform-specific options'),
+  framework: z
+    .string()
+    .optional()
+    .describe('Framework to use (e.g., arduino, espidf)'),
+  projectDir: z
+    .string()
+    .describe('Directory path where the project should be created'),
+  platformOptions: z
+    .record(z.string())
+    .optional()
+    .describe('Additional platform-specific options'),
+});
+
+export const InspectProjectParamsSchema = z.object({
+  projectDir: z
+    .string()
+    .min(1)
+    .describe('Path to the PlatformIO project directory'),
+});
+
+export const ListEnvironmentsParamsSchema = z.object({
+  projectDir: z
+    .string()
+    .min(1)
+    .describe('Path to the PlatformIO project directory'),
 });
 
 // Build project parameters
 export const BuildProjectParamsSchema = z.object({
-  projectDir: z.string().min(1).describe('Path to the PlatformIO project directory'),
-  environment: z.string().optional().describe('Specific environment to build (from platformio.ini)'),
+  projectDir: z
+    .string()
+    .min(1)
+    .describe('Path to the PlatformIO project directory'),
+  environment: z
+    .string()
+    .optional()
+    .describe('Specific environment to build (from platformio.ini)'),
 });
 
 // Clean project parameters
 export const CleanProjectParamsSchema = z.object({
-  projectDir: z.string().min(1).describe('Path to the PlatformIO project directory'),
+  projectDir: z
+    .string()
+    .min(1)
+    .describe('Path to the PlatformIO project directory'),
 });
 
 // Upload firmware parameters
 export const UploadFirmwareParamsSchema = z.object({
-  projectDir: z.string().min(1).describe('Path to the PlatformIO project directory'),
-  port: z.string().optional().describe('Upload port (auto-detected if not specified)'),
-  environment: z.string().optional().describe('Specific environment to upload (from platformio.ini)'),
+  projectDir: z
+    .string()
+    .min(1)
+    .describe('Path to the PlatformIO project directory'),
+  port: z
+    .string()
+    .optional()
+    .describe('Upload port (auto-detected if not specified)'),
+  environment: z
+    .string()
+    .optional()
+    .describe('Specific environment to upload (from platformio.ini)'),
 });
 
 // Start monitor parameters
 export const StartMonitorParamsSchema = z.object({
-  port: z.string().optional().describe('Serial port to monitor (auto-detected if not specified)'),
+  port: z
+    .string()
+    .optional()
+    .describe('Serial port to monitor (auto-detected if not specified)'),
   baud: z.number().optional().describe('Baud rate for serial communication'),
-  projectDir: z.string().optional().describe('Project directory (for environment-specific settings)'),
+  projectDir: z
+    .string()
+    .optional()
+    .describe('Project directory (for environment-specific settings)'),
+  captureDurationMs: z
+    .number()
+    .positive()
+    .optional()
+    .describe('Optional duration to capture monitor output before stopping'),
+  maxLines: z
+    .number()
+    .positive()
+    .optional()
+    .describe('Optional maximum number of output lines to capture'),
+  echo: z
+    .boolean()
+    .optional()
+    .describe('Whether monitor input echo should be enabled'),
+  filters: z
+    .array(z.string())
+    .optional()
+    .describe('Optional PlatformIO monitor filters'),
+  raw: z
+    .boolean()
+    .optional()
+    .describe('Whether raw monitor mode should be used while capturing output'),
+  eol: z
+    .enum(['CR', 'LF', 'CRLF'])
+    .optional()
+    .describe('Optional line ending mode for the serial monitor'),
 });
 
 // Search libraries parameters
 export const SearchLibrariesParamsSchema = z.object({
   query: z.string().min(1).describe('Search query for libraries'),
-  limit: z.number().optional().default(20).describe('Maximum number of results to return'),
+  limit: z
+    .number()
+    .optional()
+    .default(20)
+    .describe('Maximum number of results to return'),
 });
 
 // Install library parameters
 export const InstallLibraryParamsSchema = z.object({
   library: z.string().min(1).describe('Library name or ID to install'),
-  projectDir: z.string().optional().describe('Project directory (installs globally if not specified)'),
+  projectDir: z
+    .string()
+    .optional()
+    .describe('Project directory (installs globally if not specified)'),
   version: z.string().optional().describe('Specific version to install'),
 });
 
 // List installed libraries parameters
 export const ListInstalledLibrariesParamsSchema = z.object({
-  projectDir: z.string().optional().describe('Project directory (lists global libraries if not specified)'),
+  projectDir: z
+    .string()
+    .optional()
+    .describe('Project directory (lists global libraries if not specified)'),
+});
+
+export const DoctorParamsSchema = z.object({
+  projectDir: z
+    .string()
+    .optional()
+    .describe('Optional PlatformIO project directory to inspect'),
 });
