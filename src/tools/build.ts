@@ -56,6 +56,14 @@ export async function buildProject(
     return {
       success,
       environment: environment ?? resolvedEnvironment?.name ?? 'default',
+      resolvedEnvironment: resolvedEnvironment?.name,
+      resolutionSource: environment
+        ? 'explicit_argument'
+        : resolvedEnvironment?.isDefault
+          ? 'platformio_default_envs'
+          : resolvedEnvironment?.name
+            ? 'single_environment_fallback'
+            : undefined,
       output: result.stdout,
       errors,
     };
@@ -152,6 +160,14 @@ export async function buildTarget(
     return {
       success,
       environment: environment ?? resolvedEnvironment?.name ?? 'default',
+      resolvedEnvironment: resolvedEnvironment?.name,
+      resolutionSource: environment
+        ? 'explicit_argument'
+        : resolvedEnvironment?.isDefault
+          ? 'platformio_default_envs'
+          : resolvedEnvironment?.name
+            ? 'single_environment_fallback'
+            : undefined,
       output: result.stdout,
       errors,
     };

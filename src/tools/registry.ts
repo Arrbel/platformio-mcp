@@ -392,6 +392,7 @@ const toolRegistry: ToolDefinition[] = [
         filters: { type: 'array', items: { type: 'string' } },
         raw: { type: 'boolean' },
         eol: { type: 'string', enum: ['CR', 'LF', 'CRLF'] },
+        expectedPatterns: { type: 'array', items: { type: 'string' } },
       },
     },
     paramsSchema: StartMonitorParamsSchema,
@@ -405,7 +406,8 @@ const toolRegistry: ToolDefinition[] = [
         args.echo,
         args.filters,
         args.raw,
-        args.eol
+        args.eol,
+        args.expectedPatterns
       );
       return createToolResponse({
         status: 'ok',

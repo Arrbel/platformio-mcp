@@ -7,7 +7,7 @@ import {
   getPlatformIOVersion,
 } from '../platformio.js';
 import type { DoctorReport } from '../types.js';
-import { listDevices } from './devices.js';
+import { deriveDoctorReadiness, listDevices } from './devices.js';
 import { inspectProject } from './projects.js';
 
 export async function doctor(
@@ -51,6 +51,18 @@ export async function doctor(
     }
   }
 
+  const readiness = deriveDoctorReadiness({
+    platformioInstalled: installed,
+    hasProject: Boolean(project?.isPlatformIOProject),
+    hasEnvironment: Boolean(project && project.environments.length > 0),
+    hasMonitorConfiguration: Boolean(
+      project?.environments.some(
+        (environment) => environment.monitorPort || environment.monitorSpeed
+      )
+    ),
+    devices,
+  });
+
   return {
     nodeVersion: process.version,
     platformio: {
@@ -62,6 +74,10 @@ export async function doctor(
       count: devices.length,
       items: devices,
     },
+    readyForBuild: readiness.readyForBuild,
+    readyForUpload: readiness.readyForUpload,
+    readyForMonitor: readiness.readyForMonitor,
+    blockingIssues: readiness.blockingIssues,
     warnings,
   };
 }

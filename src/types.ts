@@ -76,12 +76,29 @@ export interface SerialDevice {
   port: string;
   description: string;
   hwid: string;
+  deviceType?:
+    | 'likely_board'
+    | 'usb_serial_adapter'
+    | 'bluetooth_serial'
+    | 'unknown_serial';
+  uploadCapability?: 'likely' | 'unlikely' | 'unknown';
+  detectionEvidence?: string[];
 }
 
 export const SerialDeviceSchema = z.object({
   port: z.string(),
   description: z.string(),
   hwid: z.string(),
+  deviceType: z
+    .enum([
+      'likely_board',
+      'usb_serial_adapter',
+      'bluetooth_serial',
+      'unknown_serial',
+    ])
+    .optional(),
+  uploadCapability: z.enum(['likely', 'unlikely', 'unknown']).optional(),
+  detectionEvidence: z.array(z.string()).optional(),
 });
 
 export const DevicesArraySchema = z.array(SerialDeviceSchema);
@@ -157,6 +174,8 @@ export const ProjectInspectionSchema = z.object({
 export interface BuildResult {
   success: boolean;
   environment: string;
+  resolvedEnvironment?: string;
+  resolutionSource?: string;
   output: string;
   errors?: string[];
 }
@@ -185,6 +204,19 @@ export const UploadConfigSchema = z.object({
 export interface UploadResult {
   success: boolean;
   port?: string;
+  resolvedPort?: string;
+  resolvedEnvironment?: string;
+  resolutionSource?: string;
+  uploadStatus?:
+    | 'uploaded'
+    | 'device_not_found'
+    | 'port_unavailable'
+    | 'uploader_failed'
+    | 'manual_boot_required'
+    | 'unknown_failure';
+  failureCategory?: string;
+  retryHint?: string;
+  rawOutput?: string;
   output: string;
   errors?: string[];
 }
@@ -210,6 +242,23 @@ export interface MonitorResult {
   message: string;
   command?: string;
   mode?: 'instructions' | 'capture';
+  resolvedPort?: string;
+  resolvedEnvironment?: string;
+  resolutionSource?: string;
+  monitorStatus?:
+    | 'instructions_only'
+    | 'captured_output'
+    | 'no_output'
+    | 'timeout'
+    | 'port_open_failed';
+  verificationStatus?:
+    | 'matched'
+    | 'not_matched'
+    | 'not_requested'
+    | 'indeterminate';
+  matchedPatterns?: string[];
+  failureCategory?: string;
+  retryHint?: string;
   output?: string[];
   timedOut?: boolean;
 }
@@ -344,6 +393,10 @@ export interface DoctorReport {
     count: number;
     items: SerialDevice[];
   };
+  readyForBuild: boolean;
+  readyForUpload: boolean;
+  readyForMonitor: boolean;
+  blockingIssues: string[];
   warnings: string[];
 }
 
@@ -467,6 +520,12 @@ export const StartMonitorParamsSchema = z.object({
     .enum(['CR', 'LF', 'CRLF'])
     .optional()
     .describe('Optional line ending mode for the serial monitor'),
+  expectedPatterns: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Optional output snippets that confirm the firmware is running as expected'
+    ),
 });
 
 // Search libraries parameters

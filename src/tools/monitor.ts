@@ -19,6 +19,66 @@ function quoteShellValue(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
+export function evaluateMonitorVerification(
+  output: string[],
+  expectedPatterns?: string[]
+): {
+  verificationStatus: MonitorResult['verificationStatus'];
+  matchedPatterns: string[];
+  failureCategory?: string;
+  retryHint?: string;
+} {
+  if (!expectedPatterns || expectedPatterns.length === 0) {
+    return {
+      verificationStatus: 'not_requested',
+      matchedPatterns: [],
+    };
+  }
+
+  if (output.length === 0) {
+    return {
+      verificationStatus: 'indeterminate',
+      matchedPatterns: [],
+      failureCategory: 'no_output',
+      retryHint: 'increase_capture_window_or_check_port',
+    };
+  }
+
+  const joined = output.join('\n');
+  const lowerJoined = joined.toLowerCase();
+
+  if (
+    lowerJoined.includes('could not open port') ||
+    lowerJoined.includes('permissionerror') ||
+    lowerJoined.includes('access is denied')
+  ) {
+    return {
+      verificationStatus: 'indeterminate',
+      matchedPatterns: [],
+      failureCategory: 'port_unavailable',
+      retryHint: 'close_serial_consumers_and_retry',
+    };
+  }
+
+  const matchedPatterns = expectedPatterns.filter((pattern) =>
+    joined.includes(pattern)
+  );
+
+  if (matchedPatterns.length > 0) {
+    return {
+      verificationStatus: 'matched',
+      matchedPatterns,
+    };
+  }
+
+  return {
+    verificationStatus: 'not_matched',
+    matchedPatterns: [],
+    failureCategory: 'expected_output_not_found',
+    retryHint: 'review_firmware_output_or_retry_capture',
+  };
+}
+
 function buildMonitorArgs(options: {
   port?: string;
   baud?: number;
@@ -90,8 +150,11 @@ export async function startMonitor(
   echo?: boolean,
   filters?: string[],
   raw?: boolean,
-  eol?: 'CR' | 'LF' | 'CRLF'
+  eol?: 'CR' | 'LF' | 'CRLF',
+  expectedPatterns?: string[]
 ): Promise<MonitorResult> {
+  const explicitPort = port;
+
   // Validate inputs
   if (port && !validateSerialPort(port)) {
     throw new PlatformIOError(`Invalid serial port: ${port}`, 'INVALID_PORT', {
@@ -136,6 +199,9 @@ export async function startMonitor(
     eol,
   });
   const monitorExecutable = (await getPlatformIOBinaryPath()) ?? 'pio';
+  const resolvedEnvironment = projectDir
+    ? await resolveProjectEnvironment(projectDir).catch(() => undefined)
+    : undefined;
   const command = buildMonitorCommand(
     monitorExecutable,
     monitorArgs,
@@ -149,12 +215,37 @@ export async function startMonitor(
       durationMs: captureDurationMs,
       maxLines,
     });
+    const verification = evaluateMonitorVerification(
+      capture.output,
+      expectedPatterns
+    );
 
     return {
       success: true,
       message: `Captured ${capture.output.length} line(s) from the serial monitor.`,
       command: capture.command,
       mode: 'capture',
+      resolvedPort: port,
+      resolvedEnvironment: resolvedEnvironment?.name,
+      resolutionSource: explicitPort
+        ? 'explicit_argument'
+        : resolvedEnvironment?.monitorPort
+          ? 'project_monitor_port'
+          : resolvedEnvironment?.name
+            ? 'environment_resolution'
+            : undefined,
+      monitorStatus:
+        verification.failureCategory === 'port_unavailable'
+          ? 'port_open_failed'
+          : capture.output.length === 0
+            ? capture.timedOut
+              ? 'timeout'
+              : 'no_output'
+            : 'captured_output',
+      verificationStatus: verification.verificationStatus,
+      matchedPatterns: verification.matchedPatterns,
+      failureCategory: verification.failureCategory,
+      retryHint: verification.retryHint,
       output: capture.output,
       timedOut: capture.timedOut,
     };
@@ -173,6 +264,17 @@ export async function startMonitor(
     message,
     command,
     mode: 'instructions',
+    resolvedPort: port,
+    resolvedEnvironment: resolvedEnvironment?.name,
+    resolutionSource: explicitPort
+      ? 'explicit_argument'
+      : resolvedEnvironment?.monitorPort
+        ? 'project_monitor_port'
+        : resolvedEnvironment?.name
+          ? 'environment_resolution'
+          : undefined,
+    monitorStatus: 'instructions_only',
+    verificationStatus: 'not_requested',
   };
 }
 

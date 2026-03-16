@@ -16,6 +16,67 @@ import {
   resolveProjectEnvironment,
 } from './projects.js';
 
+export function classifyUploadResult(
+  stdout: string,
+  stderr: string
+): {
+  uploadStatus: UploadResult['uploadStatus'];
+  failureCategory?: string;
+  retryHint?: string;
+} {
+  const combined = `${stdout}\n${stderr}`.toLowerCase();
+
+  if (!combined.trim()) {
+    return {
+      uploadStatus: 'unknown_failure',
+      failureCategory: 'unknown_failure',
+      retryHint: 'inspect_raw_output',
+    };
+  }
+
+  if (
+    combined.includes('permission denied') ||
+    combined.includes('access is denied') ||
+    combined.includes('could not open port')
+  ) {
+    return {
+      uploadStatus: 'port_unavailable',
+      failureCategory: 'port_unavailable',
+      retryHint: 'close_serial_consumers_and_retry',
+    };
+  }
+
+  if (
+    combined.includes('no device found') ||
+    combined.includes('serial port not found') ||
+    combined.includes('board is not connected')
+  ) {
+    return {
+      uploadStatus: 'device_not_found',
+      failureCategory: 'device_not_found',
+      retryHint: 'check_usb_connection_and_retry',
+    };
+  }
+
+  if (
+    combined.includes('waiting for download') ||
+    combined.includes('timed out waiting for packet header') ||
+    combined.includes('boot mode')
+  ) {
+    return {
+      uploadStatus: 'manual_boot_required',
+      failureCategory: 'manual_boot_required',
+      retryHint: 'enter_boot_mode_and_retry',
+    };
+  }
+
+  return {
+    uploadStatus: 'uploader_failed',
+    failureCategory: 'uploader_failed',
+    retryHint: 'inspect_uploader_output',
+  };
+}
+
 /**
  * Uploads firmware to a connected device
  */
@@ -25,6 +86,8 @@ export async function uploadFirmware(
   environment?: string
 ): Promise<UploadResult> {
   const validatedPath = validateProjectPath(projectDir);
+  const explicitPort = port;
+  const explicitEnvironment = environment;
 
   if (environment && !validateEnvironmentName(environment)) {
     throw new UploadError(`Invalid environment name: ${environment}`, {
@@ -63,10 +126,30 @@ export async function uploadFirmware(
 
     const success = result.exitCode === 0;
     const errors = success ? undefined : parseStderrErrors(result.stderr);
+    const classified = success
+      ? {
+          uploadStatus: 'uploaded' as const,
+          failureCategory: undefined,
+          retryHint: undefined,
+        }
+      : classifyUploadResult(result.stdout, result.stderr);
 
     return {
       success,
       port: resolvedPort,
+      resolvedPort,
+      resolvedEnvironment: resolvedEnvironment?.name,
+      resolutionSource: explicitPort
+        ? 'explicit_argument'
+        : resolvedEnvironment?.uploadPort
+          ? 'project_upload_port'
+          : explicitEnvironment || resolvedEnvironment?.name
+            ? 'environment_resolution'
+            : undefined,
+      uploadStatus: classified.uploadStatus,
+      failureCategory: classified.failureCategory,
+      retryHint: classified.retryHint,
+      rawOutput: `${result.stdout}\n${result.stderr}`.trim(),
       output: result.stdout,
       errors,
     };
@@ -95,6 +178,8 @@ export async function uploadAndMonitor(
   environment?: string
 ): Promise<UploadResult> {
   const validatedPath = validateProjectPath(projectDir);
+  const explicitPort = port;
+  const explicitEnvironment = environment;
 
   if (environment && !validateEnvironmentName(environment)) {
     throw new UploadError(`Invalid environment name: ${environment}`, {
@@ -132,10 +217,30 @@ export async function uploadAndMonitor(
 
     const success = result.exitCode === 0;
     const errors = success ? undefined : parseStderrErrors(result.stderr);
+    const classified = success
+      ? {
+          uploadStatus: 'uploaded' as const,
+          failureCategory: undefined,
+          retryHint: undefined,
+        }
+      : classifyUploadResult(result.stdout, result.stderr);
 
     return {
       success,
       port: resolvedPort,
+      resolvedPort,
+      resolvedEnvironment: resolvedEnvironment?.name,
+      resolutionSource: explicitPort
+        ? 'explicit_argument'
+        : resolvedEnvironment?.uploadPort
+          ? 'project_upload_port'
+          : explicitEnvironment || resolvedEnvironment?.name
+            ? 'environment_resolution'
+            : undefined,
+      uploadStatus: classified.uploadStatus,
+      failureCategory: classified.failureCategory,
+      retryHint: classified.retryHint,
+      rawOutput: `${result.stdout}\n${result.stderr}`.trim(),
       output: result.stdout,
       errors,
     };
