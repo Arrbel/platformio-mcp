@@ -9,7 +9,7 @@ This roadmap reflects the current brownfield state of the project. Phase A1 is l
 ## Phases
 
 - [x] **Phase 1: Phase A1** - Stabilize the MCP execution layer for current real project and monitor workflows
-- [ ] **Phase 2: Phase A2** - Complete safe real-board upload closure (blocked by hardware)
+- [x] **Phase 2: Phase A2** - Complete safe real-board upload closure
 - [x] **Phase 3: Result Stabilization** - Finish aligning all user-facing MCP tool outputs on the shared execution metadata model
 - [x] **Phase 4: Monitor Interface Refactor + CI Tests** - Refactor startMonitor signature, extract monitor profiles, and establish CI integration test layer
 - [x] **Phase 5: Registry Split + Compatibility Verification** - Split registry into per-tool modules and verify all interfaces remain backward compatible
@@ -42,7 +42,7 @@ This roadmap reflects the current brownfield state of the project. Phase A1 is l
   3. Post-flash monitor verification succeeds on that board using the current profile model.
   4. The full closure is documented with real evidence.
 **Plans:** TBD
-**Status:** Blocked by hardware availability
+**Status:** Complete — verified on ESP32-S3 with CH343 adapter, 2026-03-17
 
 ### Phase 3: Result Stabilization
 
@@ -111,7 +111,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Phase A1 | —/— | Complete | 2026-03-17 |
-| 2. Phase A2 | 0/— | Blocked | - |
+| 2. Phase A2 | 0/— | Complete | 2026-03-17 |
 | 3. Result Stabilization | 0/— | Complete | 2026-03-17 |
 | 4. Monitor Interface Refactor + CI Tests | 3/3 | Complete | 2026-03-17 |
 | 5. Registry Split + Compatibility Verification | 3/3 | Complete | 2026-03-17 |

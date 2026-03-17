@@ -1,21 +1,21 @@
-# State
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    # State
 
 ## Project Reference
 
 See: `.planning/PROJECT.md` (updated 2026-03-17)
 
 **Core value:** An AI agent can reliably understand the current embedded project and connected device state, then act through MCP with structured, trustworthy execution results.
-**Current focus:** v1.1 complete, Phase 3 closed, evaluating merge to main
+**Current focus:** All phases complete (1-6), evaluating merge to main
 
 ## Current Position
 
-Phase: Post v1.1 — all technical debt phases and RSLT-01 complete
+Phase: Post v1.1 — all phases complete including hardware closure
 Plan: —
 Status: Ready for merge decision
-Last activity: 2026-03-17 — Phase 3 (RSLT-01) closed, CI green on all jobs
+Last activity: 2026-03-17 — Phase 2 (A2) hardware closure verified on real ESP32-S3
 
 ```
-Progress: [Phase 1 ██████████] [Phase 2 ░░BLOCKED░] [Phase 3 ██████████]
+Progress: [Phase 1 ██████████] [Phase 2 ██████████] [Phase 3 ██████████]
           [Phase 4 ██████████] [Phase 5 ██████████] [Phase 6 ██████████]
 ```
 
@@ -43,14 +43,13 @@ Progress: [Phase 1 ██████████] [Phase 2 ░░BLOCKED░] [P
 
 ## Active Concerns
 
-- Phase 2 (A2) cannot proceed without a disposable or explicitly approved board.
 - Node.js 20 deprecation warnings in CI — `actions/checkout@v4` and `actions/setup-node@v4` internally use Node 20; waiting for upstream action updates.
 
 ## Scope Clarification
 
 - v1.1 (Phase 4/5/6) technical debt resolution is complete.
 - Phase 3 (RSLT-01) is now complete — all 14 tools return consistent ExecutionResultMeta.
-- Phase 2 (hardware closure) remains blocked by hardware availability.
+- Phase 2 (A2) hardware closure is now complete — verified on real ESP32-S3 with full `inspect → build → upload → monitor → verify` loop. Evidence in `docs/phase-a2-hardware-closure.md`.
 
 ---
-*State updated: 2026-03-17 — Phase 3 closed, v1.1 complete, CI green*
+*State updated: 2026-03-17 — Phase 2 closed, all phases (1-6) complete, CI green*
