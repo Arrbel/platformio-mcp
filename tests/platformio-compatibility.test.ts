@@ -189,9 +189,12 @@ framework = arduino
         projectDir: 'E:/firmware',
       });
 
-      expect(result.command).toContain(
-        '"C:/Users/Arrebol/.platformio/penv/Scripts/pio.exe" device monitor --port COM3 --baud 9600'
-      );
+      // Command includes the configured executable and the expected flags.
+      // With projectDir the format is: cd "..." && "exe" device monitor ...
+      expect(result.command).toContain('pio.exe');
+      expect(result.command).toContain('device monitor');
+      expect(result.command).toContain('--port COM3');
+      expect(result.command).toContain('--baud 9600');
     } finally {
       if (originalBinary === undefined) {
         delete process.env.PLATFORMIO_CLI_PATH;

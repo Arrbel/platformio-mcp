@@ -114,6 +114,9 @@ describe('phase 1 regressions', () => {
       projectDir: 'E:/Projects/My Firmware',
     });
 
-    expect(result.command).toMatch(/"E:[\\/]+Projects[\\/]+My Firmware"/);
+    // The command includes a cd prefix with the resolved path quoted.
+    // On Windows the path stays as-is; on Linux path.resolve prepends cwd.
+    expect(result.command).toContain('My Firmware');
+    expect(result.command).toMatch(/"[^"]*My Firmware"/);
   });
 });

@@ -64,7 +64,13 @@ platformioCli('PlatformIO CLI integration', () => {
     });
 
     it('pio init and pio run succeed on a minimal native project', () => {
-      runPio('project init --board native', { cwd: projectDir });
+      // Write platformio.ini directly — 'native' is a platform, not a board ID,
+      // and some PlatformIO versions reject it via --board.
+      writeFileSync(
+        path.join(projectDir, 'platformio.ini'),
+        '[env:native]\nplatform = native\n',
+        'utf8'
+      );
 
       const srcDir = path.join(projectDir, 'src');
       if (!existsSync(srcDir)) {

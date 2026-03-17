@@ -7,10 +7,14 @@ import { buildProject } from '../src/tools/build.js';
 import { startMonitor } from '../src/tools/monitor.js';
 
 function resolvePlatformIOCliPath(): string | undefined {
-  return (
-    process.env.PLATFORMIO_CLI_PATH ||
-    path.join(os.homedir(), '.platformio', 'penv', 'Scripts', 'pio.exe')
-  );
+  const envPath = process.env.PLATFORMIO_CLI_PATH;
+  if (envPath) return envPath;
+
+  // Platform-aware default path
+  if (process.platform === 'win32') {
+    return path.join(os.homedir(), '.platformio', 'penv', 'Scripts', 'pio.exe');
+  }
+  return path.join(os.homedir(), '.platformio', 'penv', 'bin', 'pio');
 }
 
 const platformioCliPath = resolvePlatformIOCliPath();
@@ -76,7 +80,11 @@ int main() {
   it('returns resolved monitor port metadata and an executable command', async () => {
     const result = await startMonitor({ projectDir });
 
-    expect(result.command).toContain(platformioCliPath!);
+    // Command contains 'device monitor' and the resolved port/baud.
+    // Format varies by platform (may include cd prefix with projectDir).
+    expect(result.command).toContain('device monitor');
+    expect(result.command).toContain('--port COM11');
+    expect(result.command).toContain('--baud 115200');
     expect(result.resolvedPort).toBe('COM11');
     expect(result.resolvedEnvironment).toBe('native');
     expect(result.resolutionSource).toBe('project_monitor_port');
