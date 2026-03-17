@@ -1,41 +1,28 @@
-# Requirements: PlatformIO MCP Server
+# Requirements: PlatformIO MCP Server — v1.1
 
 **Defined:** 2026-03-17
 **Core Value:** An AI agent can reliably understand the current embedded project and connected device state, then act through MCP with structured, trustworthy execution results.
 
-## v1 Requirements
+## v1.1 Requirements
 
-### Project Analysis
+### Interface & Architecture
 
-- [ ] **ANLY-01**: User can inspect a PlatformIO project and receive parsed environments, defaults, and key configuration metadata.
-- [ ] **ANLY-02**: User can list project environments separately from full project inspection.
-- [ ] **ANLY-03**: User can run `doctor` and receive clear readiness information for build, upload, and monitor.
+- [ ] **INTF-01**: `startMonitor` accepts a single typed options object instead of 17 positional parameters, with no breaking change to MCP tool callers
+- [ ] **INTF-02**: Monitor verification engine contains no hardcoded domain-specific field names; all business-level checks (sensor fields, device identity) are driven by the caller's verification profile
+- [ ] **INTF-03**: Each MCP tool definition lives in its own module file; `registry.ts` only aggregates and exports them
+- [ ] **INTF-04**: All refactored interfaces maintain backward compatibility with existing MCP tool input schemas
 
-### Device Visibility
+### Code Organization
 
-- [ ] **DEVC-01**: User can list currently connected serial devices.
-- [ ] **DEVC-02**: User can distinguish likely uploadable USB serial devices from Bluetooth serial devices.
-- [ ] **DEVC-03**: User can see why a device was classified a certain way.
+- [ ] **CORG-01**: Type definitions are split into domain-specific files (board, device, build, upload, monitor, library, common) with a barrel re-export
+- [ ] **CORG-02**: `uploadFirmware` and `uploadAndMonitor` share a common execution helper with no duplicated validation/resolution/classification logic
+- [ ] **CORG-03**: Server version in MCP handshake is read from `package.json` at build or startup time, not hardcoded
 
-### Build and Upload
+### Testing Infrastructure
 
-- [ ] **EXEC-01**: User can build a real PlatformIO project with the correct resolved environment.
-- [ ] **EXEC-02**: User can clean a real PlatformIO project.
-- [ ] **EXEC-03**: User can attempt firmware upload and receive a categorized result with retry guidance.
-
-### Runtime Verification
-
-- [ ] **MONI-01**: User can capture serial output from a connected device through MCP.
-- [ ] **MONI-02**: User can verify expected text output in captured serial logs.
-- [ ] **MONI-03**: User can verify expected JSON fields, values, and message counts in captured serial output.
-- [ ] **MONI-04**: User can evaluate whether runtime output is healthy, degraded, failed, or indeterminate.
-- [ ] **MONI-05**: User can detect port-open failures separately from business-level verification failures.
-
-### Result Semantics
-
-- [ ] **RSLT-01**: Core MCP tools return a consistent execution metadata model.
-- [ ] **RSLT-02**: Tool responses expose resolved environment/port/baud values when applicable.
-- [ ] **RSLT-03**: Tool responses expose failure categories and retry hints when applicable.
+- [ ] **TEST-01**: CI runs real PlatformIO CLI integration tests (version check, board listing, temp project init+build) without requiring hardware
+- [ ] **TEST-02**: Existing unit tests continue to pass after all refactoring with no regressions
+- [ ] **TEST-03**: New integration tests are included in the GitHub Actions CI matrix alongside existing test suite
 
 ## v2 Requirements
 
@@ -56,39 +43,30 @@
 | Workflow Layer orchestration | Deferred until execution layer is stable on real hardware |
 | Heavy VS Code UI implementation | Requires stable state contracts first |
 | JTAG / OpenOCD debugger-first support | Not the current highest-value path |
-| General-purpose autonomous code-fixing workflows | Too early without stronger hardware closure evidence |
+| New MCP tool additions | This milestone is purely structural improvement |
+| Structured logging system | Not urgent for local CLI process; defer to Workflow Layer |
+| MCP SDK version upgrade | No confirmed compatibility issue; observe only |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ANLY-01 | Phase A1 | Complete |
-| ANLY-02 | Phase A1 | Complete |
-| ANLY-03 | Phase A1 | Complete |
-| DEVC-01 | Phase A1 | Complete |
-| DEVC-02 | Phase A1 | Complete |
-| DEVC-03 | Phase A1 | Complete |
-| EXEC-01 | Phase A1 | Complete |
-| EXEC-02 | Phase A1 | Complete |
-| EXEC-03 | Phase A1 | Complete |
-| MONI-01 | Phase A1 | Complete |
-| MONI-02 | Phase A1 | Complete |
-| MONI-03 | Phase A1 | Complete |
-| MONI-04 | Phase A1 | Complete |
-| MONI-05 | Phase A1 | Complete |
-| RSLT-01 | Phase A1 | In Progress |
-| RSLT-02 | Phase A1 | Complete |
-| RSLT-03 | Phase A1 | Complete |
-| HWCL-01 | Phase A2 | Pending |
-| HWCL-02 | Phase A2 | Pending |
-| WFLO-01 | Future | Pending |
-| WFLO-02 | Future | Pending |
+| INTF-01 | — | Pending |
+| INTF-02 | — | Pending |
+| INTF-03 | — | Pending |
+| INTF-04 | — | Pending |
+| CORG-01 | — | Pending |
+| CORG-02 | — | Pending |
+| CORG-03 | — | Pending |
+| TEST-01 | — | Pending |
+| TEST-02 | — | Pending |
+| TEST-03 | — | Pending |
 
 **Coverage:**
-- v1 requirements: 17 total
-- Mapped to phases: 17
-- Unmapped: 0 ✓
+- v1.1 requirements: 10 total
+- Mapped to phases: 0 (pending roadmap)
+- Unmapped: 10
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after GSD project initialization*
+*Last updated: 2026-03-17 after milestone v1.1 definition*
