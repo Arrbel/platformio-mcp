@@ -19,6 +19,18 @@ function quoteShellValue(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
+export interface StartMonitorOptions extends MonitorVerificationProfile {
+  port?: string;
+  baud?: number;
+  projectDir?: string;
+  captureDurationMs?: number;
+  maxLines?: number;
+  echo?: boolean;
+  filters?: string[];
+  raw?: boolean;
+  eol?: 'CR' | 'LF' | 'CRLF';
+}
+
 export function evaluateMonitorVerification(
   output: string[],
   profile?: MonitorVerificationProfile
@@ -240,16 +252,19 @@ export function evaluateMonitorVerification(
   const lastJson = parsedJsonMessages[parsedJsonMessages.length - 1];
   if (
     lastJson &&
-    ['air_temp', 'air_humidity', 'soil_moisture'].every(
+    expectedJsonNonNull.length > 0 &&
+    expectedJsonNonNull.every(
       (field) => lastJson[field] !== null && lastJson[field] !== undefined
     )
   ) {
     healthSignals.push('sensor_core_present');
   }
   if (
-    lastJson?.device_id !== undefined &&
-    Object.keys(expectedJsonValues).includes('device_id') &&
-    lastJson.device_id === expectedJsonValues.device_id
+    lastJson &&
+    Object.keys(expectedJsonValues).length > 0 &&
+    Object.entries(expectedJsonValues).every(
+      ([key, value]) => lastJson[key] === value
+    )
   ) {
     healthSignals.push('device_identity_match');
   }
@@ -396,24 +411,25 @@ function buildMonitorCommand(
  * so we return instructions for the user
  */
 export async function startMonitor(
-  port?: string,
-  baud?: number,
-  projectDir?: string,
-  captureDurationMs?: number,
-  maxLines?: number,
-  echo?: boolean,
-  filters?: string[],
-  raw?: boolean,
-  eol?: 'CR' | 'LF' | 'CRLF',
-  expectedPatterns?: string[],
-  expectedJsonFields?: string[],
-  expectedJsonNonNull?: string[],
-  expectedJsonValues?: Record<string, string | number | boolean | null>,
-  allowedNullFields?: string[],
-  expectedCycleSeconds?: number,
-  expectedCycleToleranceSeconds?: number,
-  minJsonMessages?: number
+  opts: StartMonitorOptions = {}
 ): Promise<MonitorResult> {
+  const {
+    captureDurationMs,
+    maxLines,
+    echo,
+    filters,
+    raw,
+    eol,
+    expectedPatterns,
+    expectedJsonFields,
+    expectedJsonNonNull,
+    expectedJsonValues,
+    allowedNullFields,
+    expectedCycleSeconds,
+    expectedCycleToleranceSeconds,
+    minJsonMessages,
+  } = opts;
+  let { port, baud, projectDir } = opts;
   const explicitPort = port;
 
   // Validate inputs

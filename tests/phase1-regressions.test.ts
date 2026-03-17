@@ -109,11 +109,10 @@ describe('phase 1 regressions', () => {
   });
 
   it('quotes project paths with spaces in the monitor command', async () => {
-    const result = await startMonitor(
-      undefined,
-      115200,
-      'E:/Projects/My Firmware'
-    );
+    const result = await startMonitor({
+      baud: 115200,
+      projectDir: 'E:/Projects/My Firmware',
+    });
 
     expect(result.command).toMatch(/"E:[\\/]+Projects[\\/]+My Firmware"/);
   });

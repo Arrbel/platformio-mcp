@@ -31,6 +31,7 @@ This installs runtime dependencies, development tools, and writes `package-lock.
 ```bash
 npm run build
 npm test
+npm run test:integration
 npm run lint
 ```
 
@@ -38,6 +39,7 @@ Expected:
 
 - TypeScript build succeeds
 - Vitest test suite passes
+- PlatformIO CLI integration tests pass when PlatformIO is installed
 - ESLint passes
 
 ## 4. Start the Server

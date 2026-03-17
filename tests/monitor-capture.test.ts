@@ -15,7 +15,13 @@ describe('monitor capture', () => {
       timedOut: true,
     });
 
-    const result = await startMonitor('COM5', 115200, 'E:/firmware', 1500, 20);
+    const result = await startMonitor({
+      port: 'COM5',
+      baud: 115200,
+      projectDir: 'E:/firmware',
+      captureDurationMs: 1500,
+      maxLines: 20,
+    });
 
     expect(result).toEqual(
       expect.objectContaining({

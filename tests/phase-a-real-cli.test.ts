@@ -74,7 +74,7 @@ int main() {
   }, 30000);
 
   it('returns resolved monitor port metadata and an executable command', async () => {
-    const result = await startMonitor(undefined, undefined, projectDir);
+    const result = await startMonitor({ projectDir });
 
     expect(result.command).toContain(platformioCliPath!);
     expect(result.resolvedPort).toBe('COM11');

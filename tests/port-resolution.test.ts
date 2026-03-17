@@ -61,7 +61,7 @@ describe('project-based port resolution', () => {
     const projectDir = await createProjectFixture();
 
     try {
-      const result = await startMonitor(undefined, undefined, projectDir);
+      const result = await startMonitor({ projectDir });
 
       expect(result.command).toContain('--port COM7');
       expect(result.command).toContain('--baud 115200');

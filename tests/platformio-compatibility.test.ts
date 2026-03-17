@@ -183,7 +183,11 @@ framework = arduino
       'C:/Users/Arrebol/.platformio/penv/Scripts/pio.exe';
 
     try {
-      const result = await startMonitor('COM3', 9600, 'E:/firmware');
+      const result = await startMonitor({
+        port: 'COM3',
+        baud: 9600,
+        projectDir: 'E:/firmware',
+      });
 
       expect(result.command).toContain(
         '"C:/Users/Arrebol/.platformio/penv/Scripts/pio.exe" device monitor --port COM3 --baud 9600'

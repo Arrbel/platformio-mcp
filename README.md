@@ -47,6 +47,7 @@ pio --version
 npm install
 npm run build
 npm test
+npm run test:integration
 npm run lint
 ```
 
@@ -110,10 +111,11 @@ The repository uses:
 
 - `npm run build`
 - `npm test`
+- `npm run test:integration`
 - `npm run lint`
 - `npm run format:check`
 
-CI runs the same checks on pull requests.
+CI runs the same checks on pull requests, plus a dedicated PlatformIO CLI integration job.
 
 ## License
 
