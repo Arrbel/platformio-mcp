@@ -5,14 +5,18 @@
 See: `.planning/PROJECT.md` (updated 2026-03-17)
 
 **Core value:** An AI agent can reliably understand the current embedded project and connected device state, then act through MCP with structured, trustworthy execution results.
-**Current focus:** Milestone v1.1 — Technical Debt Resolution
+**Current focus:** Milestone v1.1 — Technical Debt Resolution (Phase 4)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 4 — Monitor Interface Refactor + CI Tests
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-17 — Milestone v1.1 started
+Status: Not started
+Last activity: 2026-03-17 — v1.1 roadmap created, phases 4-6 defined
+
+```
+Progress: [Phase 4 ░░░░░░░░░░] [Phase 5 ░░░░░░░░░░] [Phase 6 ░░░░░░░░░░]
+```
 
 ## Recent Verified Outcomes
 
@@ -33,11 +37,18 @@ Last activity: 2026-03-17 — Milestone v1.1 started
 - `types.ts` at 639 lines with all domains in one file — manageable now but will compound in Phase B.
 - `index.ts` hardcodes version `1.1.0` separately from `package.json`.
 
+## Key Decisions
+
+- INTF-04 backward compatibility verification is deferred to Phase 5 (after all interface refactors complete).
+- TEST-02 (no regressions) is a gate enforced at Phase 4 and re-checked at each subsequent phase.
+- Phase ordering: 4 (monitor + tests) → 5 (registry + compat) → 6 (types + upload dedup + version).
+- Phase 6 is safe to do last — CORG items are independent of interface correctness.
+
 ## Active Concerns
 
 - A2 cannot proceed safely without a disposable or explicitly approved board.
 - The project must avoid drifting into Workflow Layer or UI design while the execution layer is still stabilizing.
-- Technical debt items should be resolved before Phase B introduces new types, tools, and state models.
+- All refactoring in phases 4-6 must preserve existing MCP tool input schemas exactly.
 
 ---
-*State updated: 2026-03-17 — Milestone v1.1 started*
+*State updated: 2026-03-17 — v1.1 roadmap created*

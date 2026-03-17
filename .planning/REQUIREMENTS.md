@@ -51,22 +51,22 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INTF-01 | — | Pending |
-| INTF-02 | — | Pending |
-| INTF-03 | — | Pending |
-| INTF-04 | — | Pending |
-| CORG-01 | — | Pending |
-| CORG-02 | — | Pending |
-| CORG-03 | — | Pending |
-| TEST-01 | — | Pending |
-| TEST-02 | — | Pending |
-| TEST-03 | — | Pending |
+| INTF-01 | Phase 4 | Pending |
+| INTF-02 | Phase 4 | Pending |
+| INTF-03 | Phase 5 | Pending |
+| INTF-04 | Phase 5 | Pending |
+| CORG-01 | Phase 6 | Pending |
+| CORG-02 | Phase 6 | Pending |
+| CORG-03 | Phase 6 | Pending |
+| TEST-01 | Phase 4 | Pending |
+| TEST-02 | Phase 4 | Pending |
+| TEST-03 | Phase 4 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 10 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 10
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after milestone v1.1 definition*
+*Last updated: 2026-03-17 — traceability mapped after v1.1 roadmap creation*
