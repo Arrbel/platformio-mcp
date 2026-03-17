@@ -26,6 +26,13 @@ An AI agent can reliably understand the current embedded project and its connect
 - [ ] Tool results are consistently expressed through a shared execution metadata model across all core MCP tools.
 - [ ] Current real-world device and project workflows on Windows can be diagnosed with minimal ambiguity.
 - [ ] The MCP layer can remain device-agnostic while supporting project-specific runtime verification profiles.
+- [ ] The `startMonitor` interface uses a structured options object instead of positional parameters.
+- [ ] Monitor verification logic is free of hardcoded domain-specific fields; all business rules live in configurable profiles.
+- [ ] The tool registry is split into per-tool definition modules instead of a single monolithic file.
+- [ ] Real PlatformIO CLI integration tests can run in CI without hardware.
+- [ ] Type definitions are organized by domain rather than in a single large file.
+- [ ] Upload module has no significant code duplication between upload variants.
+- [ ] Server version is derived from package.json, not hardcoded.
 
 ### Out of Scope
 
@@ -48,6 +55,19 @@ An AI agent can reliably understand the current embedded project and its connect
 - **Project Scope**: Keep focus on the current MCP execution layer — avoid drifting into workflow orchestration or UI platform work too early.
 - **Verification Integrity**: No claimed success without real evidence — especially for hardware-related actions.
 
+## Current Milestone: v1.1 Technical Debt Resolution
+
+**Goal:** Resolve confirmed architectural debt and testing gaps before the project evolves into Workflow Layer work.
+
+**Target features:**
+- Refactor `startMonitor` from 17 positional parameters to a single options object
+- Extract hardcoded agricultural sensor fields from monitor verification into configurable profiles
+- Establish a real PlatformIO CLI integration test layer that runs in CI without hardware
+- Split `registry.ts` into per-tool definition modules
+- Split `types.ts` by domain (board, device, build, monitor, library)
+- Consolidate duplicate code in upload module
+- Derive server version from package.json instead of hardcoding
+
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
@@ -56,6 +76,8 @@ An AI agent can reliably understand the current embedded project and its connect
 | Treat real hardware samples as verification profiles, not hardcoded device logic | Preserve generality while still using real evidence | ✓ Good |
 | Prefer minimal result-model unification over large architectural rewrites | Avoid overdesign while improving agent usability | ✓ Good |
 | Delay real upload closure until a safe flashable board is available | Protect the user's live agricultural node | ✓ Good |
+| Resolve technical debt before Workflow Layer work | Accumulated architectural debt in registry, monitor, and types will compound if not addressed now | — Pending |
+| Prioritize startMonitor and monitor profile over registry split | Monitor interface is the most active change surface and directly affects board-agnostic positioning | — Pending |
 
 ---
-*Last updated: 2026-03-17 after GSD project initialization*
+*Last updated: 2026-03-17 after milestone v1.1 started*
