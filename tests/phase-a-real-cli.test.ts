@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { execSync } from 'node:child_process';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,7 +19,19 @@ function resolvePlatformIOCliPath(): string | undefined {
 }
 
 const platformioCliPath = resolvePlatformIOCliPath();
-const hasLocalPlatformIO = !!platformioCliPath;
+const hasLocalPlatformIO = (() => {
+  if (!platformioCliPath) return false;
+  try {
+    execSync(`"${platformioCliPath}" --version`, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      timeout: 10000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 const phaseAReal = hasLocalPlatformIO ? describe : describe.skip;
 
 let projectDir = '';
