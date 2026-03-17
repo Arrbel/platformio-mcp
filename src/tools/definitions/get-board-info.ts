@@ -1,3 +1,4 @@
+import type { ExecutionResultMeta } from '../../types.js';
 import { GetBoardInfoParamsSchema } from '../../types.js';
 import { getBoardInfo } from '../boards.js';
 import { createToolResponse, defineTool } from './shared.js';
@@ -21,7 +22,14 @@ export const getBoardInfoToolDefinition = defineTool({
     return createToolResponse({
       status: 'ok',
       summary: `Loaded PlatformIO board metadata for '${boardId}'.`,
-      data: board,
+      data: {
+        meta: {
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        } satisfies ExecutionResultMeta,
+        ...board,
+      },
       nextActions: [
         {
           tool: 'init_project',

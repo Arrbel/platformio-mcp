@@ -54,7 +54,7 @@ This roadmap reflects the current brownfield state of the project. Phase A1 is l
   2. High-level consumers can rely on `operationType`, `executionStatus`, `verificationStatus`, `failureCategory`, and `retryHint`.
   3. Remaining tool-specific fields continue to work without regression.
 **Plans:** TBD
-**Status:** In progress
+**Status:** Complete
 
 ### Phase 4: Monitor Interface Refactor + CI Tests
 
@@ -112,7 +112,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Phase A1 | —/— | Complete | 2026-03-17 |
 | 2. Phase A2 | 0/— | Blocked | - |
-| 3. Result Stabilization | 0/— | In progress | - |
+| 3. Result Stabilization | 0/— | Complete | 2026-03-17 |
 | 4. Monitor Interface Refactor + CI Tests | 3/3 | Complete | 2026-03-17 |
 | 5. Registry Split + Compatibility Verification | 3/3 | Complete | 2026-03-17 |
 | 6. Code Organization Cleanup | 3/3 | Complete | 2026-03-17 |

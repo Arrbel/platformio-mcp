@@ -302,4 +302,31 @@ describe('execution result meta', () => {
       })
     );
   });
+
+  it('adds execution meta to get_board_info responses', async () => {
+    vi.spyOn(boardsModule, 'getBoardInfo').mockResolvedValue({
+      id: 'esp32dev',
+      name: 'Espressif ESP32 Dev Module',
+      platform: 'espressif32',
+      mcu: 'ESP32',
+      frequency: '240MHz',
+      flash: 4194304,
+      ram: 327680,
+      frameworks: ['arduino', 'espidf'],
+    });
+
+    const response = await invokeRegisteredTool('get_board_info', {
+      boardId: 'esp32dev',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
 });
