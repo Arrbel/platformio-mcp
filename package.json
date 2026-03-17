@@ -36,6 +36,12 @@
   ],
   "author": "PlatformIO MCP Server Contributors",
   "license": "MIT",
+  "files": [
+    "build",
+    "README.md",
+    "llms-install.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
