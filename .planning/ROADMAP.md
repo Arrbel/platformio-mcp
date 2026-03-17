@@ -11,9 +11,9 @@ This roadmap reflects the current brownfield state of the project. Phase A1 is l
 - [x] **Phase 1: Phase A1** - Stabilize the MCP execution layer for current real project and monitor workflows
 - [ ] **Phase 2: Phase A2** - Complete safe real-board upload closure (blocked by hardware)
 - [x] **Phase 3: Result Stabilization** - Finish aligning all user-facing MCP tool outputs on the shared execution metadata model
-- [ ] **Phase 4: Monitor Interface Refactor + CI Tests** - Refactor startMonitor signature, extract monitor profiles, and establish CI integration test layer
-- [ ] **Phase 5: Registry Split + Compatibility Verification** - Split registry into per-tool modules and verify all interfaces remain backward compatible
-- [ ] **Phase 6: Code Organization Cleanup** - Split types by domain, deduplicate upload logic, and derive version from package.json
+- [x] **Phase 4: Monitor Interface Refactor + CI Tests** - Refactor startMonitor signature, extract monitor profiles, and establish CI integration test layer
+- [x] **Phase 5: Registry Split + Compatibility Verification** - Split registry into per-tool modules and verify all interfaces remain backward compatible
+- [x] **Phase 6: Code Organization Cleanup** - Split types by domain, deduplicate upload logic, and derive version from package.json
 
 ## Phase Details
 
@@ -70,9 +70,9 @@ This roadmap reflects the current brownfield state of the project. Phase A1 is l
 **Plans:** 3 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Refactor startMonitor to single options object, update registry call site
-- [ ] 04-02-PLAN.md — Remove hardcoded domain field names from evaluateMonitorVerification
-- [ ] 04-03-PLAN.md — Add PlatformIO CLI integration tests and CI integration job
+- [x] 04-01-PLAN.md — Refactor startMonitor to single options object, update registry call site
+- [x] 04-02-PLAN.md — Remove hardcoded domain field names from evaluateMonitorVerification
+- [x] 04-03-PLAN.md — Add PlatformIO CLI integration tests and CI integration job
 
 ### Phase 5: Registry Split + Compatibility Verification
 
@@ -83,7 +83,12 @@ Plans:
   1. Each MCP tool has its own definition file; `registry.ts` contains only imports and re-exports.
   2. All existing MCP tool input schemas are byte-for-byte identical to pre-refactor schemas (verified by test or diff).
   3. An MCP client calling any tool with a previously valid input receives the same response structure as before.
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [x] 05-01-PLAN.md — Extract shared registry helpers and first-batch read-oriented definitions
+- [x] 05-02-PLAN.md — Extract remaining execution and library tool definitions
+- [x] 05-03-PLAN.md — Add explicit registry compatibility verification tests
 
 ### Phase 6: Code Organization Cleanup
 
@@ -94,7 +99,12 @@ Plans:
   1. `types.ts` no longer exists as a monolith; domain-specific files (board, device, build, upload, monitor, library, common) exist with a barrel re-export.
   2. `uploadFirmware` and `uploadAndMonitor` share a common execution helper; duplicated validation, resolution, and classification logic is removed.
   3. The version reported in the MCP handshake matches `package.json` version at runtime; no hardcoded version string exists in `index.ts`.
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [x] 06-01-PLAN.md — Split types into domain modules behind a barrel export
+- [x] 06-02-PLAN.md — Deduplicate upload execution logic behind a shared helper
+- [x] 06-03-PLAN.md — Derive runtime version from package metadata and add consistency test
 
 ## Progress
 
@@ -103,9 +113,9 @@ Plans:
 | 1. Phase A1 | —/— | Complete | 2026-03-17 |
 | 2. Phase A2 | 0/— | Blocked | - |
 | 3. Result Stabilization | 0/— | In progress | - |
-| 4. Monitor Interface Refactor + CI Tests | 0/3 | Not started | - |
-| 5. Registry Split + Compatibility Verification | 0/— | Not started | - |
-| 6. Code Organization Cleanup | 0/— | Not started | - |
+| 4. Monitor Interface Refactor + CI Tests | 3/3 | Complete | 2026-03-17 |
+| 5. Registry Split + Compatibility Verification | 3/3 | Complete | 2026-03-17 |
+| 6. Code Organization Cleanup | 3/3 | Complete | 2026-03-17 |
 
 ## Notes
 
@@ -116,4 +126,4 @@ Plans:
 
 ---
 *Roadmap created: 2026-03-17*
-*Last updated: 2026-03-17 — phase 4 plans created*
+*Last updated: 2026-03-17 — phase 6 completed, milestone v1.1 complete*
