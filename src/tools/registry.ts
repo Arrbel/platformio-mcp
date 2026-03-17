@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import type { ToolResponse } from '../types.js';
+import type { ExecutionResultMeta, ToolResponse } from '../types.js';
 import {
   BuildProjectParamsSchema,
   CleanProjectParamsSchema,
@@ -52,6 +52,16 @@ function createToolResponse<TData>(
     ...response,
     warnings: response.warnings ?? [],
     nextActions: response.nextActions ?? [],
+  };
+}
+
+function withExecutionMeta<TData extends object>(
+  data: TData,
+  meta: ExecutionResultMeta
+): TData & { meta: ExecutionResultMeta } {
+  return {
+    meta,
+    ...data,
   };
 }
 
@@ -216,7 +226,11 @@ const toolRegistry: ToolDefinition[] = [
       return createToolResponse({
         status: 'ok',
         summary: `Inspected PlatformIO project with ${inspection.environments.length} environment(s).`,
-        data: inspection,
+        data: withExecutionMeta(inspection, {
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
         nextActions: [
           {
             tool: 'list_environments',
@@ -255,7 +269,14 @@ const toolRegistry: ToolDefinition[] = [
           environments.length > 0
             ? `Project defines ${environments.length} environment(s).`
             : 'No PlatformIO environments were found.',
-        data: environments,
+        data: {
+          meta: {
+            operationType: 'inspect',
+            executionStatus: 'succeeded',
+            verificationStatus: 'not_requested',
+          } satisfies ExecutionResultMeta,
+          items: environments,
+        },
         warnings:
           environments.length > 0
             ? []
@@ -292,7 +313,21 @@ const toolRegistry: ToolDefinition[] = [
         summary: result.success
           ? `Build completed for '${result.environment}'.`
           : `Build failed for '${result.environment}'.`,
-        data: result,
+        data: withExecutionMeta(result, {
+          operationType: 'build',
+          executionStatus: result.success ? 'succeeded' : 'failed',
+          verificationStatus: 'not_requested',
+          failureCategory:
+            result.success || !result.errors?.length
+              ? undefined
+              : 'build_failed',
+          retryHint:
+            result.success || !result.errors?.length
+              ? undefined
+              : 'inspect_build_output',
+          resolvedEnvironment: result.resolvedEnvironment,
+          resolutionSource: result.resolutionSource,
+        }),
         warnings: result.errors ?? [],
         nextActions: result.success
           ? [
@@ -364,7 +399,22 @@ const toolRegistry: ToolDefinition[] = [
         summary: result.success
           ? 'Firmware upload completed.'
           : 'Firmware upload failed.',
-        data: result,
+        data: withExecutionMeta(result, {
+          operationType: 'upload',
+          executionStatus: result.success
+            ? 'succeeded'
+            : result.failureCategory === 'port_unavailable' ||
+                result.failureCategory === 'device_not_found' ||
+                result.failureCategory === 'manual_boot_required'
+              ? 'blocked'
+              : 'failed',
+          verificationStatus: 'not_requested',
+          failureCategory: result.failureCategory,
+          retryHint: result.retryHint,
+          resolvedEnvironment: result.resolvedEnvironment,
+          resolvedPort: result.resolvedPort,
+          resolutionSource: result.resolutionSource,
+        }),
         warnings: result.errors ?? [],
         nextActions: [
           {
@@ -429,7 +479,22 @@ const toolRegistry: ToolDefinition[] = [
           result.mode === 'capture'
             ? `Captured ${result.output?.length ?? 0} serial output line(s).`
             : 'Generated a serial monitor command.',
-        data: result,
+        data: withExecutionMeta(result, {
+          operationType: 'monitor',
+          executionStatus:
+            result.monitorStatus === 'port_open_failed'
+              ? 'blocked'
+              : result.mode === 'instructions'
+                ? 'not_applicable'
+                : 'succeeded',
+          verificationStatus: result.verificationStatus ?? 'not_requested',
+          failureCategory: result.failureCategory,
+          retryHint: result.retryHint,
+          resolvedEnvironment: result.resolvedEnvironment,
+          resolvedPort: result.resolvedPort,
+          resolvedBaud: result.resolvedBaud,
+          resolutionSource: result.resolutionSource,
+        }),
         nextActions:
           result.mode === 'capture'
             ? []
@@ -572,7 +637,11 @@ const toolRegistry: ToolDefinition[] = [
           report.warnings.length > 0
             ? 'Environment checks completed with warnings.'
             : 'Environment checks completed successfully.',
-        data: report,
+        data: withExecutionMeta(report, {
+          operationType: 'doctor',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
         warnings: report.warnings,
         nextActions: [
           ...(projectDir

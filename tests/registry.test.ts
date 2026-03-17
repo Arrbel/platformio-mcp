@@ -36,9 +36,47 @@ describe('tool registry', () => {
     expect(response).toEqual(
       expect.objectContaining({
         status: 'ok',
-        data: expect.objectContaining({ projectDir: 'E:/firmware' }),
+        data: expect.objectContaining({
+          projectDir: 'E:/firmware',
+          meta: expect.objectContaining({
+            operationType: 'inspect',
+            executionStatus: 'succeeded',
+            verificationStatus: 'not_requested',
+          }),
+        }),
         summary: expect.stringMatching(/project/i),
         nextActions: expect.any(Array),
+      })
+    );
+  });
+
+  it('returns execution meta for environment listing responses', async () => {
+    vi.spyOn(projectsModule, 'listProjectEnvironments').mockResolvedValue([
+      {
+        name: 'esp32dev',
+        board: 'esp32dev',
+        platform: 'espressif32',
+        framework: 'arduino',
+        isDefault: true,
+        options: {
+          board: 'esp32dev',
+          platform: 'espressif32',
+          framework: 'arduino',
+        },
+      },
+    ]);
+
+    const response = await invokeRegisteredTool('list_environments', {
+      projectDir: 'E:/firmware',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
       })
     );
   });

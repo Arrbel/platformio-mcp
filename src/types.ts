@@ -400,6 +400,23 @@ export interface ToolResponse<TData = unknown> {
   nextActions: ToolNextAction[];
 }
 
+export interface ExecutionResultMeta {
+  operationType: 'doctor' | 'inspect' | 'build' | 'upload' | 'monitor';
+  executionStatus: 'succeeded' | 'failed' | 'blocked' | 'not_applicable';
+  verificationStatus:
+    | 'healthy'
+    | 'degraded'
+    | 'failed'
+    | 'indeterminate'
+    | 'not_requested';
+  failureCategory?: string;
+  retryHint?: string;
+  resolvedEnvironment?: string;
+  resolvedPort?: string;
+  resolvedBaud?: number;
+  resolutionSource?: string;
+}
+
 export interface DoctorReport {
   nodeVersion: string;
   platformio: {
