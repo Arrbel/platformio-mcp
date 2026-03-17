@@ -4,9 +4,16 @@
 
 import { platformioExecutor } from '../platformio.js';
 import type { BuildResult, CleanResult } from '../types.js';
-import { validateProjectPath, validateEnvironmentName } from '../utils/validation.js';
+import {
+  validateProjectPath,
+  validateEnvironmentName,
+} from '../utils/validation.js';
 import { BuildError, PlatformIOError } from '../utils/errors.js';
 import { parseStderrErrors } from '../utils/errors.js';
+import {
+  assertProjectEnvironmentExists,
+  resolveProjectEnvironment,
+} from './projects.js';
 
 /**
  * Builds a PlatformIO project
@@ -18,10 +25,18 @@ export async function buildProject(
   const validatedPath = validateProjectPath(projectDir);
 
   if (environment && !validateEnvironmentName(environment)) {
-    throw new BuildError(`Invalid environment name: ${environment}`, { environment });
+    throw new BuildError(`Invalid environment name: ${environment}`, {
+      environment,
+    });
   }
 
   try {
+    await assertProjectEnvironmentExists(validatedPath, environment);
+    const resolvedEnvironment = await resolveProjectEnvironment(
+      validatedPath,
+      environment
+    );
+
     const args: string[] = ['run'];
 
     // Add environment if specified
@@ -30,7 +45,7 @@ export async function buildProject(
     }
 
     // Build can take a while, especially first time
-    const result = await platformioExecutor.execute('run', args, {
+    const result = await platformioExecutor.execute('run', args.slice(1), {
       cwd: validatedPath,
       timeout: 600000, // 10 minutes
     });
@@ -40,21 +55,29 @@ export async function buildProject(
 
     return {
       success,
-      environment: environment || 'default',
+      environment: environment ?? resolvedEnvironment?.name ?? 'default',
+      resolvedEnvironment: resolvedEnvironment?.name,
+      resolutionSource: environment
+        ? 'explicit_argument'
+        : resolvedEnvironment?.isDefault
+          ? 'platformio_default_envs'
+          : resolvedEnvironment?.name
+            ? 'single_environment_fallback'
+            : undefined,
       output: result.stdout,
       errors,
     };
   } catch (error) {
     if (error instanceof PlatformIOError) {
-      throw new BuildError(
-        `Build failed: ${error.message}`,
-        { projectDir, environment }
-      );
+      throw new BuildError(`Build failed: ${error.message}`, {
+        projectDir,
+        environment,
+      });
     }
-    throw new BuildError(
-      `Failed to build project: ${error}`,
-      { projectDir, environment }
-    );
+    throw new BuildError(`Failed to build project: ${error}`, {
+      projectDir,
+      environment,
+    });
   }
 }
 
@@ -65,18 +88,24 @@ export async function cleanProject(projectDir: string): Promise<CleanResult> {
   const validatedPath = validateProjectPath(projectDir);
 
   try {
-    const result = await platformioExecutor.execute('run', ['--target', 'clean'], {
-      cwd: validatedPath,
-      timeout: 60000,
-    });
+    await assertProjectEnvironmentExists(validatedPath);
+
+    const result = await platformioExecutor.execute(
+      'run',
+      ['--target', 'clean'],
+      {
+        cwd: validatedPath,
+        timeout: 60000,
+      }
+    );
 
     const success = result.exitCode === 0;
 
     if (!success) {
-      throw new BuildError(
-        `Clean failed: ${result.stderr}`,
-        { projectDir, stderr: result.stderr }
-      );
+      throw new BuildError(`Clean failed: ${result.stderr}`, {
+        projectDir,
+        stderr: result.stderr,
+      });
     }
 
     return {
@@ -87,10 +116,7 @@ export async function cleanProject(projectDir: string): Promise<CleanResult> {
     if (error instanceof BuildError) {
       throw error;
     }
-    throw new BuildError(
-      `Failed to clean project: ${error}`,
-      { projectDir }
-    );
+    throw new BuildError(`Failed to clean project: ${error}`, { projectDir });
   }
 }
 
@@ -105,10 +131,18 @@ export async function buildTarget(
   const validatedPath = validateProjectPath(projectDir);
 
   if (environment && !validateEnvironmentName(environment)) {
-    throw new BuildError(`Invalid environment name: ${environment}`, { environment });
+    throw new BuildError(`Invalid environment name: ${environment}`, {
+      environment,
+    });
   }
 
   try {
+    await assertProjectEnvironmentExists(validatedPath, environment);
+    const resolvedEnvironment = await resolveProjectEnvironment(
+      validatedPath,
+      environment
+    );
+
     const args: string[] = ['run', '--target', target];
 
     if (environment) {
@@ -125,31 +159,46 @@ export async function buildTarget(
 
     return {
       success,
-      environment: environment || 'default',
+      environment: environment ?? resolvedEnvironment?.name ?? 'default',
+      resolvedEnvironment: resolvedEnvironment?.name,
+      resolutionSource: environment
+        ? 'explicit_argument'
+        : resolvedEnvironment?.isDefault
+          ? 'platformio_default_envs'
+          : resolvedEnvironment?.name
+            ? 'single_environment_fallback'
+            : undefined,
       output: result.stdout,
       errors,
     };
   } catch (error) {
     if (error instanceof PlatformIOError) {
-      throw new BuildError(
-        `Target '${target}' failed: ${error.message}`,
-        { projectDir, target, environment }
-      );
+      throw new BuildError(`Target '${target}' failed: ${error.message}`, {
+        projectDir,
+        target,
+        environment,
+      });
     }
-    throw new BuildError(
-      `Failed to build target '${target}': ${error}`,
-      { projectDir, target, environment }
-    );
+    throw new BuildError(`Failed to build target '${target}': ${error}`, {
+      projectDir,
+      target,
+      environment,
+    });
   }
 }
 
 /**
  * Gets list of available build targets for a project
  */
-export async function listTargets(projectDir: string, environment?: string): Promise<string[]> {
+export async function listTargets(
+  projectDir: string,
+  environment?: string
+): Promise<string[]> {
   const validatedPath = validateProjectPath(projectDir);
 
   try {
+    await assertProjectEnvironmentExists(validatedPath, environment);
+
     const args: string[] = ['run', '--list-targets'];
 
     if (environment) {
@@ -162,7 +211,10 @@ export async function listTargets(projectDir: string, environment?: string): Pro
     });
 
     if (result.exitCode !== 0) {
-      throw new BuildError('Failed to list targets', { projectDir, stderr: result.stderr });
+      throw new BuildError('Failed to list targets', {
+        projectDir,
+        stderr: result.stderr,
+      });
     }
 
     // Parse target list from output
@@ -171,7 +223,11 @@ export async function listTargets(projectDir: string, environment?: string): Pro
     for (const line of lines) {
       const trimmed = line.trim();
       // Targets are typically listed one per line
-      if (trimmed && !trimmed.startsWith('Environment') && !trimmed.includes(':')) {
+      if (
+        trimmed &&
+        !trimmed.startsWith('Environment') &&
+        !trimmed.includes(':')
+      ) {
         targets.push(trimmed);
       }
     }
@@ -181,9 +237,8 @@ export async function listTargets(projectDir: string, environment?: string): Pro
     if (error instanceof BuildError) {
       throw error;
     }
-    throw new BuildError(
-      `Failed to list build targets: ${error}`,
-      { projectDir }
-    );
+    throw new BuildError(`Failed to list build targets: ${error}`, {
+      projectDir,
+    });
   }
 }

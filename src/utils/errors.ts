@@ -21,7 +21,9 @@ export class PlatformIOError extends Error {
  * Error thrown when PlatformIO CLI is not installed or not found
  */
 export class PlatformIONotInstalledError extends PlatformIOError {
-  constructor(message = 'PlatformIO CLI is not installed or not found in PATH') {
+  constructor(
+    message = 'PlatformIO CLI is not installed or not found in PATH'
+  ) {
     super(message, 'PLATFORMIO_NOT_INSTALLED');
     this.name = 'PlatformIONotInstalledError';
   }
@@ -32,7 +34,11 @@ export class PlatformIONotInstalledError extends PlatformIOError {
  */
 export class BoardNotFoundError extends PlatformIOError {
   constructor(boardId: string) {
-    super(`Board '${boardId}' not found in PlatformIO registry`, 'BOARD_NOT_FOUND', { boardId });
+    super(
+      `Board '${boardId}' not found in PlatformIO registry`,
+      'BOARD_NOT_FOUND',
+      { boardId }
+    );
     this.name = 'BoardNotFoundError';
   }
 }
@@ -82,10 +88,14 @@ export class LibraryError extends PlatformIOError {
  */
 export class CommandTimeoutError extends PlatformIOError {
   constructor(command: string, timeout: number) {
-    super(`Command '${command}' timed out after ${timeout}ms`, 'COMMAND_TIMEOUT', {
-      command,
-      timeout,
-    });
+    super(
+      `Command '${command}' timed out after ${timeout}ms`,
+      'COMMAND_TIMEOUT',
+      {
+        command,
+        timeout,
+      }
+    );
     this.name = 'CommandTimeoutError';
   }
 }
@@ -95,48 +105,60 @@ export class CommandTimeoutError extends PlatformIOError {
  */
 export function formatPlatformIOError(error: unknown): string {
   if (error instanceof PlatformIONotInstalledError) {
-    return `${error.message}\n\nTroubleshooting:\n` +
+    return (
+      `${error.message}\n\nTroubleshooting:\n` +
       `1. Install PlatformIO Core CLI: https://docs.platformio.org/en/latest/core/installation.html\n` +
       `2. Ensure 'pio' or 'platformio' is in your system PATH\n` +
-      `3. Try running: pip install platformio`;
+      `3. Try running: pip install platformio`
+    );
   }
 
   if (error instanceof BoardNotFoundError) {
-    return `${error.message}\n\nTroubleshooting:\n` +
+    return (
+      `${error.message}\n\nTroubleshooting:\n` +
       `1. Check board ID spelling (case-sensitive)\n` +
       `2. List available boards with: pio boards\n` +
-      `3. Search for your board at: https://docs.platformio.org/en/latest/boards/`;
+      `3. Search for your board at: https://docs.platformio.org/en/latest/boards/`
+    );
   }
 
   if (error instanceof ProjectInitError) {
-    return `${error.message}\n\nTroubleshooting:\n` +
+    return (
+      `${error.message}\n\nTroubleshooting:\n` +
       `1. Ensure the target directory exists and is writable\n` +
       `2. Verify the board ID is correct\n` +
-      `3. Check that the framework is supported for this board`;
+      `3. Check that the framework is supported for this board`
+    );
   }
 
   if (error instanceof BuildError) {
-    return `${error.message}\n\nTroubleshooting:\n` +
+    return (
+      `${error.message}\n\nTroubleshooting:\n` +
       `1. Check your source code for syntax errors\n` +
       `2. Ensure all required libraries are installed\n` +
       `3. Verify platformio.ini configuration is correct\n` +
-      `4. Try cleaning the project: pio run -t clean`;
+      `4. Try cleaning the project: pio run -t clean`
+    );
   }
 
   if (error instanceof UploadError) {
-    return `${error.message}\n\nTroubleshooting:\n` +
+    return (
+      `${error.message}\n\nTroubleshooting:\n` +
       `1. Ensure the device is connected and powered\n` +
       `2. Check USB cable and drivers\n` +
       `3. Verify the correct port is specified\n` +
       `4. Try resetting the device\n` +
-      `5. Check that no other programs are using the serial port`;
+      `5. Check that no other programs are using the serial port`
+    );
   }
 
   if (error instanceof LibraryError) {
-    return `${error.message}\n\nTroubleshooting:\n` +
+    return (
+      `${error.message}\n\nTroubleshooting:\n` +
       `1. Check library name spelling\n` +
       `2. Verify internet connection\n` +
-      `3. Try updating library registry: pio lib update`;
+      `3. Try updating library registry: pio lib update`
+    );
   }
 
   if (error instanceof PlatformIOError) {
@@ -190,7 +212,7 @@ export function isPlatformIONotFoundError(error: unknown): boolean {
       message.includes('enoent') ||
       message.includes('not found') ||
       message.includes('command not found') ||
-      message.includes('platformio') && message.includes('not recognized')
+      (message.includes('platformio') && message.includes('not recognized'))
     );
   }
   return false;
