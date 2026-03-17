@@ -67,7 +67,12 @@ This roadmap reflects the current brownfield state of the project. Phase A1 is l
   3. CI runs PlatformIO CLI integration tests (version check, board listing, temp project init+build) and they pass without connected hardware.
   4. All existing unit tests continue to pass with no regressions after the refactor.
   5. New integration tests appear in the GitHub Actions CI matrix alongside the existing test suite.
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Refactor startMonitor to single options object, update registry call site
+- [ ] 04-02-PLAN.md — Remove hardcoded domain field names from evaluateMonitorVerification
+- [ ] 04-03-PLAN.md — Add PlatformIO CLI integration tests and CI integration job
 
 ### Phase 5: Registry Split + Compatibility Verification
 
@@ -98,7 +103,7 @@ This roadmap reflects the current brownfield state of the project. Phase A1 is l
 | 1. Phase A1 | —/— | Complete | 2026-03-17 |
 | 2. Phase A2 | 0/— | Blocked | - |
 | 3. Result Stabilization | 0/— | In progress | - |
-| 4. Monitor Interface Refactor + CI Tests | 0/— | Not started | - |
+| 4. Monitor Interface Refactor + CI Tests | 0/3 | Not started | - |
 | 5. Registry Split + Compatibility Verification | 0/— | Not started | - |
 | 6. Code Organization Cleanup | 0/— | Not started | - |
 
@@ -111,4 +116,4 @@ This roadmap reflects the current brownfield state of the project. Phase A1 is l
 
 ---
 *Roadmap created: 2026-03-17*
-*Last updated: 2026-03-17 — v1.1 phases 4-6 added*
+*Last updated: 2026-03-17 — phase 4 plans created*
