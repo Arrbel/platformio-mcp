@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as buildModule from '../src/tools/build.js';
 import * as doctorModule from '../src/tools/doctor.js';
+import * as boardsModule from '../src/tools/boards.js';
+import * as devicesModule from '../src/tools/devices.js';
+import * as librariesModule from '../src/tools/libraries.js';
 import * as monitorModule from '../src/tools/monitor.js';
+import * as projectsModule from '../src/tools/projects.js';
 import * as uploadModule from '../src/tools/upload.js';
 import { invokeRegisteredTool } from '../src/tools/registry.js';
 
@@ -131,6 +135,169 @@ describe('execution result meta', () => {
           verificationStatus: 'degraded',
           resolvedPort: 'COM9',
           resolvedBaud: 115200,
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to board listing responses', async () => {
+    vi.spyOn(boardsModule, 'listBoards').mockResolvedValue([
+      {
+        id: 'uno',
+        name: 'Arduino Uno',
+        platform: 'atmelavr',
+        mcu: 'ATMEGA328P',
+        frequency: '16000000',
+        flash: 32256,
+        ram: 2048,
+      },
+    ]);
+
+    const response = await invokeRegisteredTool('list_boards', {
+      filter: 'uno',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to device listing responses', async () => {
+    vi.spyOn(devicesModule, 'listDevices').mockResolvedValue([
+      {
+        port: 'COM9',
+        description: 'USB-Enhanced-SERIAL CH343 (COM9)',
+        hwid: 'USB VID:PID=1A86:55D3',
+      },
+    ]);
+
+    const response = await invokeRegisteredTool('list_devices', {});
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to project init responses', async () => {
+    vi.spyOn(projectsModule, 'initProject').mockResolvedValue({
+      success: true,
+      path: 'E:/firmware',
+      message: 'ok',
+    });
+
+    const response = await invokeRegisteredTool('init_project', {
+      board: 'uno',
+      projectDir: 'E:/firmware',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to clean responses', async () => {
+    vi.spyOn(buildModule, 'cleanProject').mockResolvedValue({
+      success: true,
+      message: 'clean ok',
+    });
+
+    const response = await invokeRegisteredTool('clean_project', {
+      projectDir: 'E:/firmware',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'build',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to library search responses', async () => {
+    vi.spyOn(librariesModule, 'searchLibraries').mockResolvedValue([
+      {
+        id: 64,
+        name: 'ArduinoJson',
+      },
+    ]);
+
+    const response = await invokeRegisteredTool('search_libraries', {
+      query: 'ArduinoJson',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to library install responses', async () => {
+    vi.spyOn(librariesModule, 'installLibrary').mockResolvedValue({
+      success: true,
+      library: 'ArduinoJson',
+      message: 'installed',
+    });
+
+    const response = await invokeRegisteredTool('install_library', {
+      library: 'ArduinoJson',
+      projectDir: 'E:/firmware',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to installed library listing responses', async () => {
+    vi.spyOn(librariesModule, 'listInstalledLibraries').mockResolvedValue([
+      {
+        name: 'ArduinoJson',
+        version: '7.4.3',
+      },
+    ]);
+
+    const response = await invokeRegisteredTool('list_installed_libraries', {
+      projectDir: 'E:/firmware',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
         }),
       })
     );

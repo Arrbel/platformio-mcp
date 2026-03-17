@@ -88,7 +88,14 @@ const toolRegistry: ToolDefinition[] = [
           boards.length > 0
             ? `Found ${boards.length} matching board(s).`
             : 'No matching boards were found.',
-        data: boards,
+        data: {
+          meta: {
+            operationType: 'inspect',
+            executionStatus: 'succeeded',
+            verificationStatus: 'not_requested',
+          } satisfies ExecutionResultMeta,
+          items: boards,
+        },
         warnings:
           boards.length > 0
             ? []
@@ -151,7 +158,14 @@ const toolRegistry: ToolDefinition[] = [
           devices.length > 0
             ? `Detected ${devices.length} connected serial device(s).`
             : 'No connected serial devices were detected.',
-        data: devices,
+        data: {
+          meta: {
+            operationType: 'inspect',
+            executionStatus: 'succeeded',
+            verificationStatus: 'not_requested',
+          } satisfies ExecutionResultMeta,
+          items: devices,
+        },
         warnings:
           devices.length > 0
             ? []
@@ -190,7 +204,14 @@ const toolRegistry: ToolDefinition[] = [
       return createToolResponse({
         status: 'ok',
         summary: result.message,
-        data: result,
+        data: {
+          meta: {
+            operationType: 'inspect',
+            executionStatus: 'succeeded',
+            verificationStatus: 'not_requested',
+          } satisfies ExecutionResultMeta,
+          ...result,
+        },
         nextActions: [
           {
             tool: 'inspect_project',
@@ -368,7 +389,14 @@ const toolRegistry: ToolDefinition[] = [
       return createToolResponse({
         status: 'ok',
         summary: result.message,
-        data: result,
+        data: {
+          meta: {
+            operationType: 'build',
+            executionStatus: 'succeeded',
+            verificationStatus: 'not_requested',
+          } satisfies ExecutionResultMeta,
+          ...result,
+        },
         nextActions: [
           {
             tool: 'build_project',
@@ -528,7 +556,14 @@ const toolRegistry: ToolDefinition[] = [
           libraries.length > 0
             ? `Found ${libraries.length} matching library result(s).`
             : 'No PlatformIO libraries matched the search query.',
-        data: libraries,
+        data: {
+          meta: {
+            operationType: 'inspect',
+            executionStatus: 'succeeded',
+            verificationStatus: 'not_requested',
+          } satisfies ExecutionResultMeta,
+          items: libraries,
+        },
         warnings:
           libraries.length > 0
             ? []
@@ -564,7 +599,14 @@ const toolRegistry: ToolDefinition[] = [
       return createToolResponse({
         status: 'ok',
         summary: result.message,
-        data: result,
+        data: {
+          meta: {
+            operationType: 'inspect',
+            executionStatus: 'succeeded',
+            verificationStatus: 'not_requested',
+          } satisfies ExecutionResultMeta,
+          ...result,
+        },
         nextActions: projectDir
           ? [
               {
@@ -596,7 +638,14 @@ const toolRegistry: ToolDefinition[] = [
           libraries.length > 0
             ? `Found ${libraries.length} installed librar${libraries.length === 1 ? 'y' : 'ies'}.`
             : 'No installed libraries were found.',
-        data: libraries,
+        data: {
+          meta: {
+            operationType: 'inspect',
+            executionStatus: 'succeeded',
+            verificationStatus: 'not_requested',
+          } satisfies ExecutionResultMeta,
+          items: libraries,
+        },
         warnings:
           libraries.length > 0
             ? []
