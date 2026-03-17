@@ -5,6 +5,8 @@
  * A board-agnostic MCP server for embedded development with PlatformIO.
  */
 
+import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -17,6 +19,11 @@ import type { ToolResponse } from './types.js';
 import { formatPlatformIOError } from './utils/errors.js';
 
 const toolRegistry = createToolRegistry();
+const packageMetadata = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+) as { version: string };
+
+export const SERVER_VERSION = packageMetadata.version;
 
 function serializeToolResponse(response: ToolResponse): string {
   return JSON.stringify(response, null, 2);
@@ -25,7 +32,7 @@ function serializeToolResponse(response: ToolResponse): string {
 const server = new Server(
   {
     name: 'platformio-mcp-server',
-    version: '1.1.0',
+    version: SERVER_VERSION,
   },
   {
     capabilities: {
@@ -95,7 +102,13 @@ async function main() {
   console.error(`Registered ${toolRegistry.length} MCP tools`);
 }
 
-main().catch((error) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+const isEntrypoint =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isEntrypoint) {
+  main().catch((error) => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
+}
