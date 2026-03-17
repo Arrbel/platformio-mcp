@@ -1,14 +1,65 @@
 # PlatformIO MCP Server
 
-PlatformIO MCP Server exposes PlatformIO Core workflows as MCP tools for embedded development. It targets board-agnostic flows such as board discovery, project inspection, build, upload, serial monitoring, and library management.
+PlatformIO MCP Server is a **Model Context Protocol (MCP) execution layer** for PlatformIO-based embedded development.
 
-## Current Scope
+This repository is maintained and published by **Arrbel** at `Arrbel/platformio-mcp`, and is focused on turning real PlatformIO workflows into structured MCP tools that AI agents can safely consume.
 
-- Works over stdio with the Model Context Protocol SDK
-- Uses PlatformIO CLI as the execution backend
-- Returns structured tool responses with `status`, `summary`, `data`, `warnings`, and `nextActions`
-- Parses `platformio.ini` to inspect environments and default configuration
-- Supports bounded serial output capture for agent workflows
+It supports board-agnostic flows such as:
+
+- board discovery
+- project inspection
+- environment resolution
+- firmware build
+- firmware upload
+- serial monitor capture
+- runtime verification
+- library management
+- environment diagnostics
+
+## Maintainer
+
+- **Current maintainer / publisher:** Arrbel
+- **GitHub repository:** `https://github.com/Arrbel/platformio-mcp`
+- **npm package:** `platformio-mcp-server`
+
+## Upstream Attribution
+
+This repository builds on the original upstream project lineage from `jl-codes/platformio-mcp`.
+
+The current repository adds substantial execution-layer work, including:
+
+- `startMonitor` interface refactor to a typed options object
+- profile-driven monitor verification with no hardcoded domain fields
+- per-tool registry definition modules with compatibility tests
+- domain-split type system and upload-path deduplication
+- runtime version consistency from `package.json`
+- hardware-free PlatformIO CLI integration tests in CI
+- real hardware closure validation on an ESP32-S3 sample board
+
+The upstream work remains an important source foundation and should continue to be acknowledged.
+
+## Current Release Position
+
+This repository has crossed the “proof-of-concept” stage and is now positioned as a **credible execution layer release**.
+
+### What is already validated
+
+- 14 MCP tools exposed over stdio
+- structured tool responses using `status`, `summary`, `data`, `warnings`, and `nextActions`
+- shared `ExecutionResultMeta` coverage across all 14 tools
+- `platformio.ini` parsing without requiring the PlatformIO CLI for inspect-style operations
+- hardware-free PlatformIO CLI integration tests in CI
+- one documented real hardware closure on **ESP32-S3 + CH343 + COM9**
+
+### What this does **not** mean yet
+
+- not every board has been validated in real hardware closure
+- not every upload workflow is zero-touch
+- this is not yet a fully autonomous “plug hardware and let the agent do everything forever” system
+
+The realistic current positioning is:
+
+> **execution layer complete, real closure proven at least once, broader stability still to be expanded**
 
 ## Tooling
 
@@ -29,39 +80,66 @@ The server currently exposes 14 MCP tools:
 13. `list_installed_libraries`
 14. `doctor`
 
-## Prerequisites
+## Installation
+
+### Prerequisites
 
 - Node.js 18+
 - PlatformIO Core CLI installed and available as `pio`, `platformio`, or via `PLATFORMIO_CLI_PATH`
 
-Example installation:
+Example PlatformIO installation:
 
 ```bash
 pip install platformio
 pio --version
 ```
 
-## Local Development
+### Run via `npx`
 
 ```bash
-npm install
-npm run build
-npm test
-npm run test:integration
-npm run lint
+npx -y platformio-mcp-server
 ```
 
-Run the server locally:
+### Or install globally
 
 ```bash
-node build/index.js
+npm install -g platformio-mcp-server
+platformio-mcp-server
 ```
-
-If PlatformIO CLI is missing, the server still starts, but execution tools return warnings or errors until the CLI is available.
 
 ## MCP Configuration
 
-Example configuration:
+### Recommended `npx` configuration
+
+```json
+{
+  "mcpServers": {
+    "platformio": {
+      "command": "npx",
+      "args": ["-y", "platformio-mcp-server"],
+      "env": {}
+    }
+  }
+}
+```
+
+### If PlatformIO is not in PATH
+
+```json
+{
+  "mcpServers": {
+    "platformio": {
+      "command": "npx",
+      "args": ["-y", "platformio-mcp-server"],
+      "env": {
+        "PLATFORMIO_CLI_PATH": "C:/Users/you/AppData/Local/Programs/Python/Python311/Scripts/pio.exe"
+      }
+    }
+  }
+}
+```
+
+### Local repository development configuration
 
 ```json
 {
@@ -75,22 +153,6 @@ Example configuration:
 }
 ```
 
-If PlatformIO is not in PATH, pass the binary explicitly:
-
-```json
-{
-  "mcpServers": {
-    "platformio": {
-      "command": "node",
-      "args": ["E:/program/platformio-mcp/build/index.js"],
-      "env": {
-        "PLATFORMIO_CLI_PATH": "C:/Users/you/AppData/Local/Programs/Python/Python311/Scripts/pio.exe"
-      }
-    }
-  }
-}
-```
-
 ## Typical Flow
 
 1. Run `doctor` to confirm Node.js, PlatformIO, project state, and device visibility.
@@ -98,16 +160,11 @@ If PlatformIO is not in PATH, pass the binary explicitly:
 3. Use `init_project` or `inspect_project` to prepare or inspect a PlatformIO workspace.
 4. Use `build_project` and `upload_firmware` for firmware delivery.
 5. Use `start_monitor` for either monitor instructions or bounded serial capture.
+6. Use monitor verification output to decide whether the runtime behavior matches expectations.
 
-## Notes
+## Verified Capabilities
 
-- `inspect_project` and `list_environments` work by parsing `platformio.ini`; they do not require PlatformIO CLI.
-- `upload_firmware` and `start_monitor` can inherit `upload_port`, `monitor_port`, and `monitor_speed` from the selected or default environment when those values are defined in `platformio.ini`.
-- `start_monitor` stays backward compatible: without capture options it returns an executable command; with bounded capture options it returns collected serial lines.
-
-## Verification
-
-The repository uses:
+### Non-hardware-dependent validation
 
 - `npm run build`
 - `npm test`
@@ -115,8 +172,57 @@ The repository uses:
 - `npm run lint`
 - `npm run format:check`
 
-CI runs the same checks on pull requests, plus a dedicated PlatformIO CLI integration job.
+CI runs the same checks on pull requests, including a dedicated PlatformIO CLI integration job.
+
+### Real hardware closure evidence
+
+Documented in `docs/phase-a2-hardware-closure.md`:
+
+- board: **ESP32-S3 DevKitC-1 class sample**
+- serial adapter: **CH343**
+- port: **COM9**
+- framework: **Arduino**
+- result: **build -> upload -> monitor -> verify closed successfully**
+
+Observed verification summary from the documented closure:
+
+- 5 JSON messages captured
+- 9 health signals
+- 0 failure signals
+- degraded-only status caused by expected missing physical sensors
+
+## Notes
+
+- `inspect_project` and `list_environments` work by parsing `platformio.ini`; they do not require the PlatformIO CLI.
+- `upload_firmware` and `start_monitor` can inherit `upload_port`, `monitor_port`, and `monitor_speed` from the selected or default environment when those values are defined in `platformio.ini`.
+- `start_monitor` remains backward compatible at the MCP schema level; without capture options it returns an executable command, with bounded capture options it returns collected serial lines.
+
+## Local Development
+
+```bash
+npm install
+npm run build
+npm test
+npm run test:integration
+npm run lint
+npm run format:check
+```
+
+Run from source:
+
+```bash
+node build/index.js
+```
+
+If PlatformIO CLI is missing, the server still starts, but execution tools return warnings or errors until the CLI is available.
+
+## Recommended Reading
+
+- `llms-install.md` — agent/operator-oriented installation guide
+- `docs/phase-a-a1-closure-report.md` — Phase A1 closure report
+- `docs/phase-a2-hardware-closure.md` — real hardware closure record
+- `docs/hardware-validation.md` — hardware validation baseline
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See `LICENSE`.
