@@ -4,11 +4,20 @@
 
 import { mkdir, readFile } from 'fs/promises';
 import path from 'path';
-import { platformioExecutor } from '../platformio.js';
+import {
+  generateCompilationDatabase,
+  getProjectMetadata,
+  platformioExecutor,
+} from '../platformio.js';
 import type {
+  CompileCommandsResult,
+  ProjectCapabilities,
   ProjectEnvironmentSummary,
   ProjectInitResult,
   ProjectInspection,
+  ProjectRiskSummary,
+  ProjectSummary,
+  ProjectTargetsResult,
 } from '../types.js';
 import {
   validateBoardId,
@@ -17,11 +26,13 @@ import {
   checkDirectoryExists,
   checkFileExists,
 } from '../utils/validation.js';
-import { ProjectInitError } from '../utils/errors.js';
+import { PlatformIOError, ProjectInitError } from '../utils/errors.js';
 
 type ParsedPlatformIOConfig = {
   defaultEnvironments: string[];
   environments: ProjectEnvironmentSummary[];
+  warnings: string[];
+  complexitySignals: string[];
 };
 
 function normalizeFrameworkValue(framework?: string): string | undefined {
@@ -48,9 +59,53 @@ function parseDefaultEnvironments(value?: string): string[] {
     .filter(Boolean);
 }
 
+function parseMonitorFilters(value?: string): string[] | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const filters = value
+    .split(/[,\n]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return filters.length > 0 ? filters : undefined;
+}
+
+function parseListLikeValue(value?: string): string[] | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const items = value
+    .split(/[,\n]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return items.length > 0 ? items : undefined;
+}
+
+function parseBooleanLikeValue(value?: string): boolean | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+}
+
 function parsePlatformIOIni(contents: string): ParsedPlatformIOConfig {
   const sections = new Map<string, Record<string, string>>();
   let currentSection = '';
+  let currentKey = '';
+  const warnings = new Set<string>();
+  const complexitySignals = new Set<string>();
 
   for (const rawLine of contents.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -60,6 +115,7 @@ function parsePlatformIOIni(contents: string): ParsedPlatformIOConfig {
 
     if (line.startsWith('[') && line.endsWith(']')) {
       currentSection = line.slice(1, -1).trim();
+      currentKey = '';
       if (!sections.has(currentSection)) {
         sections.set(currentSection, {});
       }
@@ -67,12 +123,50 @@ function parsePlatformIOIni(contents: string): ParsedPlatformIOConfig {
     }
 
     const separatorIndex = line.indexOf('=');
-    if (separatorIndex === -1 || !currentSection) {
+    if (!currentSection) {
+      continue;
+    }
+
+    if (currentKey && /^\s+/.test(rawLine) && !line.startsWith('[')) {
+      const existing = sections.get(currentSection)?.[currentKey] ?? '';
+      sections.set(currentSection, {
+        ...(sections.get(currentSection) ?? {}),
+        [currentKey]: existing ? `${existing}\n${line}` : line,
+      });
+      continue;
+    }
+
+    if (separatorIndex === -1) {
       continue;
     }
 
     const key = line.slice(0, separatorIndex).trim();
     const value = line.slice(separatorIndex + 1).trim();
+    currentKey = key;
+    if (key === 'extends') {
+      warnings.add(
+        'This project uses extends in platformio.ini. Parsed config may differ from PlatformIO Core resolution semantics.'
+      );
+      complexitySignals.add('extends_present');
+    }
+    if (key === 'extra_configs') {
+      warnings.add(
+        'This project uses extra_configs. Parsed config may omit settings loaded from additional files.'
+      );
+      complexitySignals.add('extra_configs_present');
+    }
+    if (value.includes('${sysenv.')) {
+      warnings.add(
+        'This project uses ${sysenv.*} interpolation. Runtime values may depend on shell environment variables.'
+      );
+      complexitySignals.add('sysenv_interpolation_present');
+    }
+    if (value.includes('${this.')) {
+      warnings.add(
+        'This project uses ${this.*} interpolation. Parsed values may not match the final resolved PlatformIO configuration.'
+      );
+      complexitySignals.add('this_interpolation_present');
+    }
     sections.set(currentSection, {
       ...(sections.get(currentSection) ?? {}),
       [key]: value,
@@ -97,8 +191,17 @@ function parsePlatformIOIni(contents: string): ParsedPlatformIOConfig {
         platform: options.platform,
         board: options.board,
         framework: normalizeFrameworkValue(options.framework),
+        testIgnore: parseListLikeValue(options.test_ignore ?? options.test_filter),
+        testFramework: options.test_framework,
+        testBuildSrc: parseBooleanLikeValue(options.test_build_src),
+        libDeps: parseListLikeValue(options.lib_deps),
+        libExtraDirs: parseListLikeValue(options.lib_extra_dirs),
+        libLdfMode: options.lib_ldf_mode,
+        libCompatMode: options.lib_compat_mode,
+        extraScripts: parseListLikeValue(options.extra_scripts),
         monitorPort: options.monitor_port,
         monitorSpeed: Number.isFinite(monitorSpeed) ? monitorSpeed : undefined,
+        monitorFilters: parseMonitorFilters(options.monitor_filters),
         uploadPort: options.upload_port,
         isDefault: defaultEnvironments.includes(name),
         options,
@@ -108,6 +211,204 @@ function parsePlatformIOIni(contents: string): ParsedPlatformIOConfig {
   return {
     defaultEnvironments,
     environments,
+    warnings: Array.from(warnings),
+    complexitySignals: Array.from(complexitySignals),
+  };
+}
+
+function detectConfigurationWarnings(contents: string): {
+  warnings: string[];
+  complexitySignals: string[];
+} {
+  const warnings = new Set<string>();
+  const complexitySignals = new Set<string>();
+  if (/^\s*extra_configs\s*=/m.test(contents)) {
+    warnings.add(
+      'This project uses extra_configs. Parsed config may omit settings loaded from additional files.'
+    );
+    complexitySignals.add('extra_configs_present');
+  }
+  if (/^\s*extends\s*=/m.test(contents)) {
+    warnings.add(
+      'This project uses extends in platformio.ini. Parsed config may differ from PlatformIO Core resolution semantics.'
+    );
+    complexitySignals.add('extends_present');
+  }
+  if (contents.includes('${sysenv.') || contents.includes('PIO_BOARD')) {
+    warnings.add(
+      'This project uses ${sysenv.*} interpolation. Runtime values may depend on shell environment variables.'
+    );
+    complexitySignals.add('sysenv_interpolation_present');
+    complexitySignals.add('default_env_override_possible');
+  }
+  if (contents.includes('${this.') || contents.includes('__env__')) {
+    warnings.add(
+      'This project uses ${this.*} interpolation. Parsed values may not match the final resolved PlatformIO configuration.'
+    );
+    complexitySignals.add('this_interpolation_present');
+  }
+  if (contents.includes('${PROJECT_DEFAULT_ENV}') || contents.includes('PLATFORMIO_DEFAULT_ENVS')) {
+    complexitySignals.add('default_env_override_possible');
+  }
+  return {
+    warnings: Array.from(warnings),
+    complexitySignals: Array.from(complexitySignals),
+  };
+}
+
+function determineEnvironmentResolution(config: ParsedPlatformIOConfig): {
+  resolvedEnvironment?: string;
+  environmentResolution:
+    | 'explicit'
+    | 'default_envs'
+    | 'single_environment_fallback'
+    | 'ambiguous'
+    | 'not_resolved';
+  resolutionReason: string;
+  resolutionWarnings: string[];
+} {
+  if (config.defaultEnvironments.length > 0) {
+    const resolvedEnvironment = config.defaultEnvironments[0];
+    const matchingEnvironment = config.environments.find(
+      (environment) => environment.name === resolvedEnvironment
+    );
+
+    if (!matchingEnvironment) {
+      return {
+        environmentResolution: 'not_resolved',
+        resolutionReason:
+          'platformio.default_envs is configured, but none of the listed environments exist in platformio.ini.',
+        resolutionWarnings: [
+          `Configured default_envs entry '${resolvedEnvironment}' does not match any declared [env:<name>] section.`,
+        ],
+      };
+    }
+
+    return {
+      resolvedEnvironment,
+      environmentResolution: 'default_envs',
+      resolutionReason: `Resolved from platformio.default_envs (${config.defaultEnvironments.join(', ')}).`,
+      resolutionWarnings: [],
+    };
+  }
+
+  if (config.environments.length === 1) {
+    return {
+      resolvedEnvironment: config.environments[0]?.name,
+      environmentResolution: 'single_environment_fallback',
+      resolutionReason:
+        'Resolved from the only environment defined in platformio.ini.',
+      resolutionWarnings: [],
+    };
+  }
+
+  if (config.environments.length > 1) {
+    return {
+      environmentResolution: 'ambiguous',
+      resolutionReason:
+        'Multiple environments are defined and no default_envs entry was found.',
+      resolutionWarnings: [
+        'Environment selection is ambiguous until a specific environment is provided or default_envs is configured.',
+      ],
+    };
+  }
+
+  return {
+    environmentResolution: 'not_resolved',
+    resolutionReason: 'No [env:<name>] sections were found in platformio.ini.',
+    resolutionWarnings: [
+      'Project does not currently define any PlatformIO environments.',
+    ],
+  };
+}
+
+async function detectProjectCapabilities(
+  projectDir: string,
+  environments: ProjectEnvironmentSummary[],
+  metadataAvailable: boolean,
+  targets?: string[],
+  metadataExtra?: Record<string, unknown>
+): Promise<ProjectCapabilities> {
+  const testDirExists = await checkDirectoryExists(path.join(projectDir, 'test'));
+  const hasNativeEnvironment = environments.some(
+    (environment) => environment.platform === 'native'
+  );
+  const hasTestConfiguration = environments.some(
+    (environment) =>
+      Boolean(environment.testFramework) ||
+      Boolean(environment.testBuildSrc) ||
+      Boolean(environment.testIgnore?.length)
+  );
+  const hasLibraryDependencyOverrides = environments.some(
+    (environment) =>
+      Boolean(environment.libDeps?.length) ||
+      Boolean(environment.libExtraDirs?.length) ||
+      Boolean(environment.libLdfMode) ||
+      Boolean(environment.libCompatMode)
+  );
+  const hasExtraScripts = environments.some(
+    (environment) => Boolean(environment.extraScripts?.length)
+  );
+  const targetList = targets ?? [];
+  const hasCustomTargetsHint =
+    targetList.some(
+      (target) => !['buildprog', 'clean', 'upload', 'monitor', 'compiledb'].includes(target)
+    ) || Boolean(metadataExtra?.custom_targets);
+
+  return {
+    hasMetadata: metadataAvailable,
+    hasTargets: targetList.length > 0,
+    canGenerateCompileCommands:
+      hasNativeEnvironment ||
+      environments.some((environment) => Boolean(environment.board)),
+    hasTestDir: testDirExists,
+    hasTestConfiguration,
+    hasLibraryDependencyOverrides,
+    hasExtraScripts,
+    hasNativeEnvironment,
+    hasCustomTargetsHint,
+  };
+}
+
+function excerptOutput(output: string, maxLength = 400): string {
+  return output.trim().slice(0, maxLength);
+}
+
+function buildProjectSummary(options: {
+  inspection: Pick<
+    ProjectInspection,
+    | 'defaultEnvironments'
+    | 'environments'
+    | 'resolvedEnvironment'
+    | 'environmentResolution'
+    | 'projectCapabilities'
+  >;
+}): ProjectSummary {
+  const { inspection } = options;
+  return {
+    environmentCount: inspection.environments.length,
+    defaultEnvironmentCount: inspection.defaultEnvironments.length,
+    resolvedEnvironment: inspection.resolvedEnvironment,
+    environmentResolution: inspection.environmentResolution,
+    hasMetadata: inspection.projectCapabilities.hasMetadata,
+    hasTargets: inspection.projectCapabilities.hasTargets,
+    hasTestConfiguration: inspection.projectCapabilities.hasTestConfiguration,
+    hasLibraryDependencyOverrides:
+      inspection.projectCapabilities.hasLibraryDependencyOverrides,
+    hasExtraScripts: inspection.projectCapabilities.hasExtraScripts,
+  };
+}
+
+function buildRiskSummary(options: {
+  configComplexitySignals: string[];
+  resolutionWarnings: string[];
+  warnings: string[];
+}): ProjectRiskSummary {
+  const { configComplexitySignals, resolutionWarnings, warnings } = options;
+  return {
+    hasEnvironmentRisk: resolutionWarnings.length > 0,
+    hasConfigurationRisk: configComplexitySignals.length > 0,
+    hasWarnings: warnings.length > 0 || resolutionWarnings.length > 0,
   };
 }
 
@@ -130,13 +431,76 @@ async function loadProjectInspection(
 
   const contents = await readFile(platformioIniPath, 'utf8');
   const parsed = parsePlatformIOIni(contents);
+  const configAnalysis = detectConfigurationWarnings(contents);
+  const warnings = [
+    ...new Set([...parsed.warnings, ...configAnalysis.warnings]),
+  ];
+  const environmentResolution = determineEnvironmentResolution(parsed);
+  const configComplexitySignals = [
+    ...new Set([
+      ...parsed.complexitySignals,
+      ...configAnalysis.complexitySignals,
+    ]),
+  ];
+  const projectCapabilities = await detectProjectCapabilities(
+    validatedPath,
+    parsed.environments,
+    false
+  );
+  const resolutionWarnings = [...environmentResolution.resolutionWarnings];
+
+  if (configComplexitySignals.includes('default_env_override_possible')) {
+    resolutionWarnings.push(
+      'Default environment selection may still be affected by environment variables or interpolation at runtime.'
+    );
+  }
+
+  const partialInspection = {
+    defaultEnvironments: parsed.defaultEnvironments,
+    environments: parsed.environments,
+    resolvedEnvironment: environmentResolution.resolvedEnvironment,
+    environmentResolution: environmentResolution.environmentResolution,
+    projectCapabilities,
+  } satisfies Pick<
+    ProjectInspection,
+    | 'defaultEnvironments'
+    | 'environments'
+    | 'resolvedEnvironment'
+    | 'environmentResolution'
+    | 'projectCapabilities'
+  >;
 
   return {
     projectDir: validatedPath,
     platformioIniPath,
     isPlatformIOProject: true,
+    configSource: 'platformio_ini',
+    metadataSource: 'pio_project_metadata',
     defaultEnvironments: parsed.defaultEnvironments,
     environments: parsed.environments,
+    resolvedEnvironment: environmentResolution.resolvedEnvironment,
+    environmentResolution: environmentResolution.environmentResolution,
+    resolutionReason: environmentResolution.resolutionReason,
+    resolutionWarnings,
+    metadataAvailable: false,
+    metadata: undefined,
+    targets: undefined,
+    toolchain: undefined,
+    includes: undefined,
+    defines: undefined,
+    programPath: undefined,
+    metadataExtra: undefined,
+    configComplexitySignals,
+    projectCapabilities,
+    projectSummary: buildProjectSummary({
+      inspection: partialInspection,
+    }),
+    riskSummary: buildRiskSummary({
+      configComplexitySignals,
+      resolutionWarnings,
+      warnings,
+    }),
+    warnings,
   };
 }
 
@@ -279,7 +643,86 @@ export async function getProjectConfig(
 export async function inspectProject(
   projectDir: string
 ): Promise<ProjectInspection> {
-  return loadProjectInspection(projectDir);
+  const inspection = await loadProjectInspection(projectDir);
+  const primaryEnvironment = inspection.resolvedEnvironment;
+
+  if (!primaryEnvironment) {
+    return {
+      ...inspection,
+      warnings: inspection.warnings.concat(
+        'PlatformIO metadata lookup was skipped because no environment could be resolved unambiguously.'
+      ),
+    };
+  }
+
+  try {
+    const metadata = await getProjectMetadata(
+      inspection.projectDir,
+      primaryEnvironment
+    );
+    const projectCapabilities = await detectProjectCapabilities(
+      inspection.projectDir,
+      inspection.environments,
+      true,
+      metadata.targets,
+      metadata.extra
+    );
+
+    return {
+      ...inspection,
+      metadataAvailable: true,
+      metadata,
+      targets: metadata.targets,
+      toolchain: metadata.toolchain,
+      includes: metadata.includes,
+      defines: metadata.defines,
+      programPath: metadata.programPath,
+      metadataExtra: metadata.extra,
+      projectCapabilities,
+      projectSummary: buildProjectSummary({
+        inspection: {
+          defaultEnvironments: inspection.defaultEnvironments,
+          environments: inspection.environments,
+          resolvedEnvironment: inspection.resolvedEnvironment,
+          environmentResolution: inspection.environmentResolution,
+          projectCapabilities,
+        },
+      }),
+      riskSummary: buildRiskSummary({
+        configComplexitySignals: inspection.configComplexitySignals,
+        resolutionWarnings: inspection.resolutionWarnings,
+        warnings: inspection.warnings,
+      }),
+    };
+  } catch (error) {
+    const warnings = inspection.warnings.concat(
+      `PlatformIO metadata could not be resolved: ${String(error)}`
+    );
+    const projectCapabilities = await detectProjectCapabilities(
+      inspection.projectDir,
+      inspection.environments,
+      false
+    );
+    return {
+      ...inspection,
+      projectCapabilities,
+      projectSummary: buildProjectSummary({
+        inspection: {
+          defaultEnvironments: inspection.defaultEnvironments,
+          environments: inspection.environments,
+          resolvedEnvironment: inspection.resolvedEnvironment,
+          environmentResolution: inspection.environmentResolution,
+          projectCapabilities,
+        },
+      }),
+      riskSummary: buildRiskSummary({
+        configComplexitySignals: inspection.configComplexitySignals,
+        resolutionWarnings: inspection.resolutionWarnings,
+        warnings,
+      }),
+      warnings,
+    };
+  }
 }
 
 /**
@@ -290,6 +733,125 @@ export async function listProjectEnvironments(
 ): Promise<ProjectEnvironmentSummary[]> {
   const inspection = await loadProjectInspection(projectDir);
   return inspection.environments;
+}
+
+function parseTargetList(output: string): string[] {
+  const targets = new Set<string>();
+
+  for (const line of output.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (
+      !trimmed ||
+      /^Environment\s+/i.test(trimmed) ||
+      /^-+\s*/.test(trimmed)
+    ) {
+      continue;
+    }
+
+    const columns = trimmed.split(/\s{2,}/).filter(Boolean);
+    const target =
+      columns.length >= 3 ? columns[2] : columns.length === 1 ? columns[0] : undefined;
+    if (target && /^[A-Za-z0-9_.-]+$/.test(target)) {
+      targets.add(target);
+    }
+  }
+
+  return Array.from(targets);
+}
+
+export async function listProjectTargets(
+  projectDir: string,
+  environment?: string
+): Promise<ProjectTargetsResult> {
+  const validatedPath = validateProjectPath(projectDir);
+  await assertProjectEnvironmentExists(validatedPath, environment);
+  const resolvedEnvironment = environment
+    ? (await resolveProjectEnvironment(validatedPath, environment))?.name
+    : (await resolveProjectEnvironment(validatedPath))?.name;
+
+  const args = ['--list-targets'];
+  if (environment) {
+    args.push('--environment', environment);
+  }
+
+  const result = await platformioExecutor.execute('run', args, {
+    cwd: validatedPath,
+    timeout: 120000,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new ProjectInitError('Failed to list project targets', {
+      projectDir: validatedPath,
+      environment,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    });
+  }
+
+  const items = parseTargetList(result.stdout);
+
+  return {
+    projectDir: validatedPath,
+    environment,
+    resolvedEnvironment,
+    targetDiscoveryStatus: items.length > 0 ? 'targets_found' : 'no_targets',
+    targets: items,
+    rawOutputExcerpt: excerptOutput(result.stdout),
+    items,
+  };
+}
+
+export async function generateProjectCompilationDatabase(
+  projectDir: string
+): Promise<CompileCommandsResult> {
+  const validatedPath = validateProjectPath(projectDir);
+  const resolvedEnvironment = (await resolveProjectEnvironment(validatedPath))
+    ?.name;
+
+  if (!resolvedEnvironment) {
+    return {
+      success: false,
+      command: 'pio run -t compiledb',
+      generationStatus: 'environment_not_resolved',
+      failureCategory: 'environment_not_resolved',
+    };
+  }
+
+  try {
+    const result = await generateCompilationDatabase(validatedPath);
+    return {
+      ...result,
+      outputPath: result.outputPath,
+      compileCommandsPath: result.outputPath,
+      resolvedEnvironment,
+      generationStatus: 'generated',
+      failureCategory: undefined,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? `${error.message}` : String(error);
+    const lower = message.toLowerCase();
+    const toolchainUnavailable =
+      lower.includes('g++') ||
+      lower.includes('clang') ||
+      lower.includes('compiler') ||
+      lower.includes('toolchain');
+    const platformioError =
+      error instanceof PlatformIOError ? error : undefined;
+
+    return {
+      success: false,
+      command: 'pio run -t compiledb',
+      resolvedEnvironment,
+      generationStatus: toolchainUnavailable
+        ? 'toolchain_unavailable'
+        : 'command_failed',
+      failureCategory: toolchainUnavailable
+        ? 'toolchain_unavailable'
+        : platformioError?.code?.toLowerCase() ?? 'command_failed',
+      rawOutputExcerpt: excerptOutput(message),
+    };
+  }
 }
 
 /**
@@ -308,14 +870,12 @@ export async function resolveProjectEnvironment(
     return inspection.environments.find((entry) => entry.name === environment);
   }
 
-  const defaultEnvironment = inspection.defaultEnvironments[0];
-  if (defaultEnvironment) {
+  if (inspection.resolvedEnvironment) {
     return inspection.environments.find(
-      (entry) => entry.name === defaultEnvironment
+      (entry) => entry.name === inspection.resolvedEnvironment
     );
   }
-
-  return inspection.environments[0];
+  return undefined;
 }
 
 /**

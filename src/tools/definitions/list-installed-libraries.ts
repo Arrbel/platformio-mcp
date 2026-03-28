@@ -17,10 +17,10 @@ export const listInstalledLibrariesToolDefinition = defineTool({
   handler: async ({ projectDir }: { projectDir?: string }) => {
     const libraries = await listInstalledLibraries(projectDir);
     return createToolResponse({
-      status: libraries.length > 0 ? 'ok' : 'warning',
+      status: libraries.items.length > 0 ? 'ok' : 'warning',
       summary:
-        libraries.length > 0
-          ? `Found ${libraries.length} installed librar${libraries.length === 1 ? 'y' : 'ies'}.`
+        libraries.items.length > 0
+          ? `Found ${libraries.items.length} installed librar${libraries.items.length === 1 ? 'y' : 'ies'}.`
           : 'No installed libraries were found.',
       data: {
         meta: {
@@ -28,10 +28,10 @@ export const listInstalledLibrariesToolDefinition = defineTool({
           executionStatus: 'succeeded',
           verificationStatus: 'not_requested',
         } satisfies ExecutionResultMeta,
-        items: libraries,
+        items: libraries.items,
       },
       warnings:
-        libraries.length > 0
+        libraries.items.length > 0
           ? []
           : [
               'Install a library with install_library if the project depends on external components.',

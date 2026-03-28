@@ -57,6 +57,24 @@ describe('project-based port resolution', () => {
     }
   });
 
+  it('returns the auto-detected upload port when PlatformIO resolves it at runtime', async () => {
+    const projectDir = await createProjectFixture();
+    vi.spyOn(platformioExecutor, 'execute').mockResolvedValue({
+      stdout: 'Looking for upload port...\nAuto-detected: COM9\nUploading...',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    try {
+      const result = await uploadFirmware(projectDir, undefined, 'release');
+
+      expect(result.resolvedPort).toBe('COM9');
+      expect(result.port).toBe('COM9');
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it('uses the configured monitor_port when no monitor port is passed explicitly', async () => {
     const projectDir = await createProjectFixture();
 

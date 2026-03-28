@@ -18,10 +18,10 @@ export const searchLibrariesToolDefinition = defineTool({
   handler: async ({ query, limit }: { query: string; limit?: number }) => {
     const libraries = await searchLibraries(query, limit);
     return createToolResponse({
-      status: libraries.length > 0 ? 'ok' : 'warning',
+      status: libraries.items.length > 0 ? 'ok' : 'warning',
       summary:
-        libraries.length > 0
-          ? `Found ${libraries.length} matching library result(s).`
+        libraries.items.length > 0
+          ? `Found ${libraries.items.length} matching library result(s).`
           : 'No PlatformIO libraries matched the search query.',
       data: {
         meta: {
@@ -29,14 +29,15 @@ export const searchLibrariesToolDefinition = defineTool({
           executionStatus: 'succeeded',
           verificationStatus: 'not_requested',
         } satisfies ExecutionResultMeta,
-        items: libraries,
+        items: libraries.items,
+        pagination: libraries.pagination,
       },
       warnings:
-        libraries.length > 0
+        libraries.items.length > 0
           ? []
           : ['Try a broader search term or search by the package name.'],
       nextActions:
-        libraries.length > 0
+        libraries.items.length > 0
           ? [
               {
                 tool: 'install_library',

@@ -2,10 +2,15 @@
  * PlatformIO CLI wrapper and command execution
  */
 
-import { execFile, spawn } from 'child_process';
+import {
+  execFile,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from 'child_process';
+import { promises as fs } from 'fs';
 import { promisify } from 'util';
 import { z } from 'zod';
-import type { CommandResult } from './types.js';
+import type { CommandResult, ProjectMetadata } from './types.js';
 import {
   PlatformIONotInstalledError,
   PlatformIOError,
@@ -20,11 +25,54 @@ let cachedPlatformIOBinary: string | null = null;
 // Default timeout for commands (5 minutes for builds)
 const DEFAULT_TIMEOUT = 300000; // 5 minutes
 
-function getPlatformIOCandidates(): string[] {
+async function getPersistedPlatformIOCliPath(): Promise<string | undefined> {
+  if (process.platform !== 'win32') {
+    return undefined;
+  }
+
+  try {
+    const result = await execFileAsync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        `[Environment]::GetEnvironmentVariable('${PLATFORMIO_PATH_ENV}', 'User')`,
+      ],
+      {
+        timeout: 5000,
+        windowsHide: true,
+      }
+    );
+    const value = result.stdout.trim();
+    return value || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function getPlatformIOCandidates(): Promise<string[]> {
   const configuredBinary = process.env[PLATFORMIO_PATH_ENV]?.trim();
-  return [configuredBinary, 'pio', 'platformio'].filter(
-    (value): value is string => Boolean(value)
-  );
+  const persistedBinary = await getPersistedPlatformIOCliPath();
+  return [
+    configuredBinary,
+    persistedBinary,
+    getLocalPlatformIODefaultPath(),
+    'pio',
+    'platformio',
+  ].filter((value, index, values): value is string => {
+    return Boolean(value) && values.indexOf(value) === index;
+  });
+}
+
+function getLocalPlatformIODefaultPath(): string | undefined {
+  if (process.platform === 'win32') {
+    const profile = process.env.USERPROFILE?.trim();
+    return profile
+      ? `${profile}\\.platformio\\penv\\Scripts\\pio.exe`
+      : undefined;
+  }
+  const home = process.env.HOME?.trim();
+  return home ? `${home}/.platformio/penv/bin/pio` : undefined;
 }
 
 async function findPlatformIOBinary(): Promise<string> {
@@ -32,7 +80,7 @@ async function findPlatformIOBinary(): Promise<string> {
     return cachedPlatformIOBinary;
   }
 
-  for (const candidate of getPlatformIOCandidates()) {
+  for (const candidate of await getPlatformIOCandidates()) {
     try {
       await execFileAsync(candidate, ['--version'], {
         timeout: 5000,
@@ -60,6 +108,300 @@ export async function getPlatformIOBinaryPath(): Promise<string | undefined> {
     }
     throw error;
   }
+}
+
+export function getRecommendedPlatformIOCliPath(): string | undefined {
+  return getLocalPlatformIODefaultPath();
+}
+
+export async function isPlatformIOShellCallable(): Promise<boolean> {
+  const configuredBinary = process.env[PLATFORMIO_PATH_ENV]?.trim();
+  if (configuredBinary) {
+    return true;
+  }
+
+  const persistedBinary = await getPersistedPlatformIOCliPath();
+  if (persistedBinary) {
+    return true;
+  }
+
+  for (const candidate of ['pio', 'platformio']) {
+    try {
+      await execFileAsync(candidate, ['--version'], {
+        timeout: 5000,
+        windowsHide: true,
+      });
+      return true;
+    } catch (error) {
+      if (!isPlatformIONotFoundError(error)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export async function getPlatformIOPythonExecutable(): Promise<
+  string | undefined
+> {
+  const binary = await getPlatformIOBinaryPath();
+  if (!binary) {
+    return undefined;
+  }
+
+  const normalized = binary.replace(/\\/g, '/').toLowerCase();
+  if (normalized.endsWith('/platformio.exe') || normalized.endsWith('/pio.exe')) {
+    return binary.replace(/(platformio|pio)\.exe$/i, 'python.exe');
+  }
+  if (normalized.endsWith('/platformio') || normalized.endsWith('/pio')) {
+    return binary.replace(/(platformio|pio)$/i, 'python');
+  }
+  return undefined;
+}
+
+export async function checkRemoteCliAvailable(): Promise<{
+  available: boolean;
+  installTriggered: boolean;
+}> {
+  const result = await execPioCommand(['remote', '--help'], { timeout: 15000 });
+  const combined = `${result.stdout}\n${result.stderr}`;
+  const installTriggered =
+    combined.toLowerCase().includes('pioremote') ||
+    combined.toLowerCase().includes('contrib-pioremote') ||
+    combined.toLowerCase().includes('installing');
+
+  return {
+    available: result.exitCode === 0,
+    installTriggered,
+  };
+}
+
+export async function detectHostCppToolchain(): Promise<{
+  available: boolean;
+  shellCallable: boolean;
+  detectedCompilers: string[];
+  packageManager: 'winget' | 'choco' | 'none';
+}> {
+  const compilerCandidates =
+    process.platform === 'win32'
+      ? ['g++', 'cl']
+      : ['g++', 'clang++'];
+  const detectedCompilers: string[] = [];
+
+  for (const candidate of compilerCandidates) {
+    try {
+      const args = candidate === 'cl' ? [] : ['--version'];
+      await execFileAsync(candidate, args, {
+        timeout: 5000,
+        windowsHide: true,
+      });
+      detectedCompilers.push(candidate);
+    } catch (error) {
+      if (!isPlatformIONotFoundError(error)) {
+        detectedCompilers.push(candidate);
+      }
+    }
+  }
+
+  if (process.platform === 'win32' && detectedCompilers.length === 0) {
+    const localCandidates = [
+      'C:\\Program Files\\LLVM\\bin\\clang++.exe',
+      'C:\\Program Files\\LLVM\\bin\\g++.exe',
+    ];
+
+    for (const candidate of localCandidates) {
+      try {
+        await fs.access(candidate);
+        detectedCompilers.push(candidate);
+      } catch {
+        // Keep probing other standard install locations.
+      }
+    }
+  }
+
+  let packageManager: 'winget' | 'choco' | 'none' = 'none';
+  try {
+    await execFileAsync('winget', ['--version'], {
+      timeout: 5000,
+      windowsHide: true,
+    });
+    packageManager = 'winget';
+  } catch {
+    try {
+      await execFileAsync('choco', ['--version'], {
+        timeout: 5000,
+        windowsHide: true,
+      });
+      packageManager = 'choco';
+    } catch {
+      packageManager = 'none';
+    }
+  }
+
+  return {
+    available: detectedCompilers.length > 0,
+    shellCallable: detectedCompilers.length > 0,
+    detectedCompilers,
+    packageManager,
+  };
+}
+
+export async function probeSerialPortBusy(port?: string): Promise<{
+  port?: string;
+  busy: boolean;
+  failureCategory?: string;
+  retryHint?: string;
+}> {
+  if (!port || process.platform !== 'win32') {
+    return {
+      port,
+      busy: false,
+    };
+  }
+
+  try {
+    await execFileAsync('mode', [port], {
+      timeout: 5000,
+      windowsHide: true,
+      shell: true,
+    });
+    return {
+      port,
+      busy: false,
+    };
+  } catch {
+    return {
+      port,
+      busy: true,
+      failureCategory: 'port_unavailable',
+      retryHint: 'close_serial_consumers_and_retry',
+    };
+  }
+}
+
+const ProjectMetadataEntrySchema = z.object({
+  build_type: z.string().optional(),
+  env_name: z.string().optional(),
+  includes: z.record(z.array(z.string())).optional(),
+  defines: z.array(z.string()).optional(),
+  cc_path: z.string().optional(),
+  cxx_path: z.string().optional(),
+  gdb_path: z.string().optional(),
+  prog_path: z.string().optional(),
+  compiler_type: z.string().nullable().optional(),
+  targets: z
+    .array(
+      z.union([
+        z.string(),
+        z.object({
+          name: z.string(),
+          title: z.string().optional().nullable(),
+          description: z.string().optional().nullable(),
+          group: z.string().optional().nullable(),
+        }),
+      ])
+    )
+    .optional(),
+  extra: z.record(z.unknown()).optional(),
+});
+
+export async function getProjectMetadata(
+  projectDir: string,
+  environment?: string
+): Promise<ProjectMetadata> {
+  const args = ['project', 'metadata', '--json-output'];
+  if (environment) {
+    args.push('--environment', environment);
+  }
+
+  const result = await execPioCommand(args, {
+    cwd: projectDir,
+    timeout: 120000,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new PlatformIOError('Failed to read PlatformIO project metadata', 'COMMAND_FAILED', {
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      projectDir,
+      environment,
+    });
+  }
+
+  const parsed = JSON.parse(result.stdout) as unknown;
+  let metadataCandidate: unknown;
+
+  if (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    ('build_type' in parsed || 'env_name' in parsed)
+  ) {
+    metadataCandidate = parsed;
+  } else if (typeof parsed === 'object' && parsed !== null) {
+    const record = parsed as Record<string, unknown>;
+    metadataCandidate =
+      (environment ? record[environment] : undefined) ??
+      Object.values(record).find(
+        (entry) => typeof entry === 'object' && entry !== null
+      );
+  }
+
+  const metadata = metadataCandidate
+    ? ProjectMetadataEntrySchema.parse(metadataCandidate)
+    : undefined;
+
+  if (!metadata) {
+    throw new PlatformIOError(
+      'Project metadata response did not contain any environment entries',
+      'PARSE_ERROR',
+      { projectDir, environment, output: result.stdout.substring(0, 500) }
+    );
+  }
+
+  return {
+    envName: metadata.env_name,
+    buildType: metadata.build_type,
+    toolchain: {
+      ccPath: metadata.cc_path,
+      cxxPath: metadata.cxx_path,
+      gdbPath: metadata.gdb_path,
+      compilerType: metadata.compiler_type ?? undefined,
+    },
+    includes: metadata.includes,
+    defines: metadata.defines,
+    programPath: metadata.prog_path,
+    targets: metadata.targets?.map((target) =>
+      typeof target === 'string' ? target : target.name
+    ),
+    extra: metadata.extra,
+  };
+}
+
+export async function generateCompilationDatabase(projectDir: string): Promise<{
+  success: boolean;
+  command: string;
+  outputPath: string;
+}> {
+  const result = await execPioCommand(['run', '-t', 'compiledb'], {
+    cwd: projectDir,
+    timeout: 300000,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new PlatformIOError('Failed to generate compile_commands.json', 'COMMAND_FAILED', {
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      projectDir,
+    });
+  }
+
+  const binary = await findPlatformIOBinary();
+  return {
+    success: true,
+    command: `${binary} run -t compiledb`,
+    outputPath: `${projectDir.replace(/\\/g, '/')}/compile_commands.json`,
+  };
 }
 
 /**
@@ -286,6 +628,26 @@ export async function captureMonitorOutput(options: {
       finish();
     });
   });
+}
+
+export async function spawnMonitorProcess(options: {
+  args: string[];
+  cwd?: string;
+}): Promise<{
+  command: string;
+  child: ChildProcessWithoutNullStreams;
+}> {
+  const platformioBinary = await findPlatformIOBinary();
+  const command = `${platformioBinary} ${options.args.join(' ')}`.trim();
+  const child = spawn(platformioBinary, options.args, {
+    cwd: options.cwd,
+    windowsHide: true,
+  });
+
+  return {
+    command,
+    child,
+  };
 }
 
 /**

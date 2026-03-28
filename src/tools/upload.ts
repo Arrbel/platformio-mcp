@@ -21,14 +21,17 @@ export function classifyUploadResult(
   stderr: string
 ): {
   uploadStatus: UploadResult['uploadStatus'];
+  resolvedPort?: string;
   failureCategory?: string;
   retryHint?: string;
 } {
   const combined = `${stdout}\n${stderr}`.toLowerCase();
+  const resolvedPort = extractResolvedUploadPort(stdout, stderr);
 
   if (!combined.trim()) {
     return {
       uploadStatus: 'unknown_failure',
+      resolvedPort,
       failureCategory: 'unknown_failure',
       retryHint: 'inspect_raw_output',
     };
@@ -41,6 +44,7 @@ export function classifyUploadResult(
   ) {
     return {
       uploadStatus: 'port_unavailable',
+      resolvedPort,
       failureCategory: 'port_unavailable',
       retryHint: 'close_serial_consumers_and_retry',
     };
@@ -53,6 +57,7 @@ export function classifyUploadResult(
   ) {
     return {
       uploadStatus: 'device_not_found',
+      resolvedPort,
       failureCategory: 'device_not_found',
       retryHint: 'check_usb_connection_and_retry',
     };
@@ -65,6 +70,7 @@ export function classifyUploadResult(
   ) {
     return {
       uploadStatus: 'manual_boot_required',
+      resolvedPort,
       failureCategory: 'manual_boot_required',
       retryHint: 'enter_boot_mode_and_retry',
     };
@@ -72,9 +78,32 @@ export function classifyUploadResult(
 
   return {
     uploadStatus: 'uploader_failed',
+    resolvedPort,
     failureCategory: 'uploader_failed',
     retryHint: 'inspect_uploader_output',
   };
+}
+
+function extractResolvedUploadPort(
+  stdout: string,
+  stderr: string
+): string | undefined {
+  const combined = `${stdout}\n${stderr}`;
+  const patterns = [
+    /Auto-detected:\s*([A-Za-z0-9._:-]+)/i,
+    /Uploading(?:\s+to)?\s+([A-Za-z0-9._:-]+)\b/i,
+    /could not open port '([^']+)'/i,
+    /No device found on\s+([A-Za-z0-9._:-]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = combined.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return undefined;
 }
 
 async function executeUploadRun(options: {
@@ -133,9 +162,11 @@ async function executeUploadRun(options: {
 
     const success = result.exitCode === 0;
     const errors = success ? undefined : parseStderrErrors(result.stderr);
+    const detectedPort = extractResolvedUploadPort(result.stdout, result.stderr);
     const classified = success
       ? {
           uploadStatus: 'uploaded' as const,
+          resolvedPort: detectedPort,
           failureCategory: undefined,
           retryHint: undefined,
         }
@@ -143,8 +174,8 @@ async function executeUploadRun(options: {
 
     return {
       success,
-      port: resolvedPort,
-      resolvedPort,
+      port: resolvedPort ?? classified.resolvedPort,
+      resolvedPort: resolvedPort ?? classified.resolvedPort,
       resolvedEnvironment: resolvedEnvironment?.name,
       resolutionSource: explicitPort
         ? 'explicit_argument'

@@ -125,6 +125,60 @@ describe('phase A semantics', () => {
     expect(verification.parsedJsonMessages).toHaveLength(2);
   });
 
+  it('returns healthy when all expected runtime sensor fields are present and non-null', () => {
+    const verification = evaluateMonitorVerification(
+      [
+        '━━━━━━ JSON 输出 ━━━━━━',
+        '{"device_id":1001,"timestamp":341,"air_temp":23.3,"air_humidity":43.7,"soil_moisture":28,"light":38,"co2":417}',
+        '{"device_id":1001,"timestamp":347,"air_temp":23.3,"air_humidity":43.9,"soil_moisture":28,"light":38,"co2":442}',
+        '{"device_id":1001,"timestamp":352,"air_temp":23.3,"air_humidity":44.1,"soil_moisture":28,"light":38,"co2":400}',
+      ],
+      {
+        expectedPatterns: ['JSON 输出'],
+        expectedJsonFields: [
+          'device_id',
+          'timestamp',
+          'air_temp',
+          'air_humidity',
+          'soil_moisture',
+          'light',
+          'co2',
+        ],
+        expectedJsonNonNull: [
+          'device_id',
+          'timestamp',
+          'air_temp',
+          'air_humidity',
+          'soil_moisture',
+          'light',
+          'co2',
+        ],
+        expectedJsonValues: { device_id: 1001 },
+        expectedCycleSeconds: 5,
+        expectedCycleToleranceSeconds: 2,
+        minJsonMessages: 2,
+      }
+    );
+
+    expect(verification.verificationStatus).toBe('healthy');
+    expect(verification.healthSignals).toEqual(
+      expect.arrayContaining([
+        'expected_patterns_matched',
+        'json_fields_present',
+        'json_non_null_fields_present',
+        'json_values_match',
+        'json_message_count_sufficient',
+        'node_loop_healthy',
+        'node_online_basic',
+        'sensor_core_present',
+        'device_identity_match',
+      ])
+    );
+    expect(verification.degradedSignals).toEqual([]);
+    expect(verification.failureSignals).toEqual([]);
+    expect(verification.parsedJsonMessages).toHaveLength(3);
+  });
+
   it('reports stalled output as a failure when JSON timestamps stop increasing', () => {
     const verification = evaluateMonitorVerification(
       [

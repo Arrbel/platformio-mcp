@@ -6,6 +6,11 @@ import path from 'node:path';
 
 import { buildProject } from '../src/tools/build.js';
 import { startMonitor } from '../src/tools/monitor.js';
+import {
+  generateProjectCompilationDatabase,
+  inspectProject,
+  listProjectTargets,
+} from '../src/tools/projects.js';
 
 function resolvePlatformIOCliPath(): string | undefined {
   const envPath = process.env.PLATFORMIO_CLI_PATH;
@@ -26,6 +31,18 @@ const hasLocalPlatformIO = (() => {
       encoding: 'utf8',
       stdio: 'pipe',
       timeout: 10000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const hasHostGpp = (() => {
+  try {
+    execSync('g++ --version', {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      timeout: 5000,
     });
     return true;
   } catch {
@@ -82,13 +99,17 @@ int main() {
     }
   });
 
-  it('returns resolved environment metadata for builds that use defaults', async () => {
+  it.skipIf(!hasHostGpp)(
+    'returns resolved environment metadata for builds that use defaults',
+    async () => {
     const result = await buildProject(projectDir);
 
     expect(result.environment).toBe('native');
     expect(result.resolvedEnvironment).toBe('native');
     expect(result.resolutionSource).toBe('platformio_default_envs');
-  }, 30000);
+    },
+    30000
+  );
 
   it('returns resolved monitor port metadata and an executable command', async () => {
     const result = await startMonitor({ projectDir });
@@ -101,5 +122,47 @@ int main() {
     expect(result.resolvedPort).toBe('COM11');
     expect(result.resolvedEnvironment).toBe('native');
     expect(result.resolutionSource).toBe('project_monitor_port');
+  });
+
+  it('inspect_project exposes environment truth and capabilities on a real native project', async () => {
+    const result = await inspectProject(projectDir);
+
+    expect(result.configSource).toBe('platformio_ini');
+    expect(result.metadataSource).toBe('pio_project_metadata');
+    expect(result.resolvedEnvironment).toBe('native');
+    expect(result.environmentResolution).toBe('default_envs');
+    expect(result.metadataAvailable).toBe(true);
+    expect(result.projectCapabilities).toEqual(
+      expect.objectContaining({
+        hasMetadata: true,
+        hasNativeEnvironment: true,
+        canGenerateCompileCommands: true,
+      })
+    );
+  });
+
+  it('list_project_targets returns structured discovery status on a real native project', async () => {
+    const result = await listProjectTargets(projectDir);
+
+    expect(result.resolvedEnvironment).toBe('native');
+    expect(['targets_found', 'no_targets']).toContain(
+      result.targetDiscoveryStatus
+    );
+    expect(Array.isArray(result.targets)).toBe(true);
+    expect(result.rawOutputExcerpt.length).toBeGreaterThan(0);
+  });
+
+  it('generate_compile_commands returns structured status on a real native project', async () => {
+    const result = await generateProjectCompilationDatabase(projectDir);
+
+    if (hasHostGpp) {
+      expect(result.generationStatus).toBe('generated');
+      expect(result.compileCommandsPath).toMatch(/compile_commands\.json$/);
+    } else {
+      expect(['generated', 'toolchain_unavailable', 'command_failed']).toContain(
+        result.generationStatus
+      );
+    }
+    expect(result.resolvedEnvironment).toBe('native');
   });
 });
