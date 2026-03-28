@@ -2,10 +2,12 @@
  * Serial monitor tools
  */
 
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { MonitorResult, MonitorVerificationProfile } from '../types.js';
 import {
   captureMonitorOutput,
   getPlatformIOBinaryPath,
+  spawnMonitorProcess,
 } from '../platformio.js';
 import {
   validateSerialPort,
@@ -30,6 +32,55 @@ export interface StartMonitorOptions extends MonitorVerificationProfile {
   raw?: boolean;
   eol?: 'CR' | 'LF' | 'CRLF';
 }
+
+export interface OpenMonitorSessionOptions {
+  port?: string;
+  baud?: number;
+  projectDir?: string;
+  echo?: boolean;
+  filters?: string[];
+  raw?: boolean;
+  eol?: 'CR' | 'LF' | 'CRLF';
+}
+
+export interface ReadMonitorSessionOptions extends MonitorVerificationProfile {
+  sessionId: string;
+  durationMs?: number;
+  maxLines?: number;
+}
+
+export interface WriteMonitorSessionOptions {
+  sessionId: string;
+  data: string;
+}
+
+export interface CloseMonitorSessionOptions {
+  sessionId: string;
+}
+
+type MonitorSessionState = {
+  sessionId: string;
+  transportType?: MonitorResult['transportType'];
+  endpoint?: string;
+  source: 'local' | 'remote-bridge';
+  filters?: string[];
+  resolvedPort?: string;
+  resolvedBaud?: number;
+  resolvedEnvironment?: string;
+  resolutionSource?: string;
+  command: string;
+  projectDir?: string;
+  monitorArgs: string[];
+  closed: boolean;
+  processExited: boolean;
+  writes: string[];
+  child: ChildProcessWithoutNullStreams;
+  outputBuffer: string[];
+  pendingStdout: string;
+};
+
+const monitorSessions = new Map<string, MonitorSessionState>();
+let monitorSessionCounter = 0;
 
 export function evaluateMonitorVerification(
   output: string[],
@@ -405,35 +456,74 @@ function buildMonitorCommand(
     : command;
 }
 
-/**
- * Provides information and command for starting a serial monitor
- * Note: The actual monitor is interactive and can't run in the background,
- * so we return instructions for the user
- */
-export async function startMonitor(
-  opts: StartMonitorOptions = {}
-): Promise<MonitorResult> {
-  const {
-    captureDurationMs,
-    maxLines,
-    echo,
-    filters,
-    raw,
-    eol,
-    expectedPatterns,
-    expectedJsonFields,
-    expectedJsonNonNull,
-    expectedJsonValues,
-    allowedNullFields,
-    expectedCycleSeconds,
-    expectedCycleToleranceSeconds,
-    minJsonMessages,
-  } = opts;
-  let { port, baud, projectDir } = opts;
+function detectTransportType(
+  port?: string
+): MonitorResult['transportType'] | undefined {
+  if (!port) {
+    return undefined;
+  }
+  if (port.startsWith('socket://')) {
+    return 'socket';
+  }
+  if (port.startsWith('rfc2217://')) {
+    return 'rfc2217';
+  }
+  return 'serial';
+}
+
+function extractResolvedMonitorPort(output: string[]): string | undefined {
+  const joined = output.join('\n');
+  const patterns = [
+    /--- Terminal on ([^|]+)\|/i,
+    /could not open port '([^']+)'/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = joined.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return undefined;
+}
+
+function createMonitorSessionId(): string {
+  monitorSessionCounter += 1;
+  return `monitor-session-${monitorSessionCounter}`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function resolveMonitorExecutionContext(options: {
+  port?: string;
+  baud?: number;
+  projectDir?: string;
+  echo?: boolean;
+  filters?: string[];
+  raw?: boolean;
+  eol?: 'CR' | 'LF' | 'CRLF';
+}): Promise<{
+  projectDir?: string;
+  port?: string;
+  baud?: number;
+  filters?: string[];
+  resolvedEnvironment?: string;
+  resolutionSource?: string;
+  monitorArgs: string[];
+  monitorExecutable: string;
+  command: string;
+  transportType?: MonitorResult['transportType'];
+  endpoint?: string;
+}> {
+  let { port, baud, projectDir } = options;
   const explicitPort = port;
 
-  // Validate inputs
-  if (port && !validateSerialPort(port)) {
+  if (port && !isMonitorEndpointValid(port)) {
     throw new PlatformIOError(`Invalid serial port: ${port}`, 'INVALID_PORT', {
       port,
     });
@@ -462,33 +552,104 @@ export async function startMonitor(
       const resolvedEnvironment = await resolveProjectEnvironment(projectDir);
       port ??= resolvedEnvironment?.monitorPort;
       baud ??= resolvedEnvironment?.monitorSpeed;
+      options.filters ??= resolvedEnvironment?.monitorFilters;
     } catch {
-      // If the directory is not a valid PlatformIO project yet, still return a usable monitor command.
+      // Keep behavior compatible with legacy start_monitor resolution.
     }
   }
 
-  const monitorArgs = buildMonitorArgs({
-    port,
-    baud,
-    echo,
-    filters,
-    raw,
-    eol,
-  });
   const monitorExecutable = (await getPlatformIOBinaryPath()) ?? 'pio';
   const resolvedEnvironment = projectDir
     ? await resolveProjectEnvironment(projectDir).catch(() => undefined)
     : undefined;
+  const monitorArgs = buildMonitorArgs({
+    port,
+    baud,
+    echo: options.echo,
+    filters: options.filters,
+    raw: options.raw,
+    eol: options.eol,
+  });
   const command = buildMonitorCommand(
     monitorExecutable,
     monitorArgs,
     projectDir
   );
 
+  return {
+    projectDir,
+    port,
+    baud,
+    filters: options.filters,
+    resolvedEnvironment: resolvedEnvironment?.name,
+    resolutionSource: explicitPort
+      ? 'explicit_argument'
+      : resolvedEnvironment?.monitorPort
+        ? 'project_monitor_port'
+        : resolvedEnvironment?.name
+          ? 'environment_resolution'
+          : undefined,
+    monitorArgs,
+    monitorExecutable,
+    command,
+    transportType: detectTransportType(port),
+    endpoint: port,
+  };
+}
+
+function getExistingMonitorSession(sessionId: string): MonitorSessionState {
+  const session = monitorSessions.get(sessionId);
+  if (!session) {
+    throw new PlatformIOError(
+      `Monitor session '${sessionId}' was not found.`,
+      'INVALID_SESSION',
+      { sessionId }
+    );
+  }
+  if (session.closed) {
+    throw new PlatformIOError(
+      `Monitor session '${sessionId}' is already closed.`,
+      'INVALID_SESSION',
+      { sessionId }
+    );
+  }
+  return session;
+}
+
+function isMonitorEndpointValid(port: string): boolean {
+  return (
+    validateSerialPort(port) ||
+    port.startsWith('socket://') ||
+    port.startsWith('rfc2217://')
+  );
+}
+
+/**
+ * Provides information and command for starting a serial monitor
+ * Note: The actual monitor is interactive and can't run in the background,
+ * so we return instructions for the user
+ */
+export async function startMonitor(
+  opts: StartMonitorOptions = {}
+): Promise<MonitorResult> {
+  const {
+    captureDurationMs,
+    maxLines,
+    expectedPatterns,
+    expectedJsonFields,
+    expectedJsonNonNull,
+    expectedJsonValues,
+    allowedNullFields,
+    expectedCycleSeconds,
+    expectedCycleToleranceSeconds,
+    minJsonMessages,
+  } = opts;
+  const context = await resolveMonitorExecutionContext(opts);
+
   if (captureDurationMs || maxLines) {
     const capture = await captureMonitorOutput({
-      args: monitorArgs,
-      cwd: projectDir,
+      args: context.monitorArgs,
+      cwd: context.projectDir,
       durationMs: captureDurationMs,
       maxLines,
     });
@@ -502,22 +663,24 @@ export async function startMonitor(
       expectedCycleToleranceSeconds,
       minJsonMessages,
     });
+    const detectedPort = context.port ?? extractResolvedMonitorPort(capture.output);
+    const detectedEndpoint = context.endpoint ?? detectedPort;
+    const detectedTransportType =
+      context.transportType ?? detectTransportType(detectedPort);
 
     return {
       success: true,
       message: `Captured ${capture.output.length} line(s) from the serial monitor.`,
       command: capture.command,
       mode: 'capture',
-      resolvedPort: port,
-      resolvedBaud: baud,
-      resolvedEnvironment: resolvedEnvironment?.name,
-      resolutionSource: explicitPort
-        ? 'explicit_argument'
-        : resolvedEnvironment?.monitorPort
-          ? 'project_monitor_port'
-          : resolvedEnvironment?.name
-            ? 'environment_resolution'
-            : undefined,
+      transportType: detectedTransportType,
+      endpoint: detectedEndpoint,
+      source: 'local',
+      filters: context.filters,
+      resolvedPort: detectedPort,
+      resolvedBaud: context.baud,
+      resolvedEnvironment: context.resolvedEnvironment,
+      resolutionSource: context.resolutionSource,
       monitorStatus:
         verification.failureCategory === 'port_unavailable'
           ? 'port_open_failed'
@@ -543,7 +706,7 @@ export async function startMonitor(
   const message =
     'Serial monitor requires interactive terminal access. ' +
     'Please run the following command in your terminal:\n\n' +
-    `  ${command}\n\n` +
+    `  ${context.command}\n\n` +
     'Press Ctrl+C to exit the monitor.\n\n' +
     'Note: If port and baud rate are not specified, PlatformIO will auto-detect them ' +
     'from your platformio.ini configuration.';
@@ -551,19 +714,225 @@ export async function startMonitor(
   return {
     success: true,
     message,
-    command,
+    command: context.command,
     mode: 'instructions',
-    resolvedPort: port,
-    resolvedBaud: baud,
-    resolvedEnvironment: resolvedEnvironment?.name,
-    resolutionSource: explicitPort
-      ? 'explicit_argument'
-      : resolvedEnvironment?.monitorPort
-        ? 'project_monitor_port'
-        : resolvedEnvironment?.name
-          ? 'environment_resolution'
-          : undefined,
+    transportType: context.transportType,
+    endpoint: context.endpoint,
+    source: 'local',
+    filters: context.filters,
+    resolvedPort: context.port,
+    resolvedBaud: context.baud,
+    resolvedEnvironment: context.resolvedEnvironment,
+    resolutionSource: context.resolutionSource,
     monitorStatus: 'instructions_only',
+    verificationStatus: 'not_requested',
+  };
+}
+
+export async function openMonitorSession(
+  opts: OpenMonitorSessionOptions = {}
+): Promise<MonitorResult> {
+  const context = await resolveMonitorExecutionContext(opts);
+  const sessionId = createMonitorSessionId();
+  const monitorProcess = await spawnMonitorProcess({
+    args: context.monitorArgs,
+    cwd: context.projectDir,
+  });
+  const session: MonitorSessionState = {
+    sessionId,
+    transportType: context.transportType,
+    endpoint: context.endpoint,
+    source: 'local',
+    filters: context.filters,
+    resolvedPort: context.port,
+    resolvedBaud: context.baud,
+    resolvedEnvironment: context.resolvedEnvironment,
+    resolutionSource: context.resolutionSource,
+    command: monitorProcess.command,
+    projectDir: context.projectDir,
+    monitorArgs: context.monitorArgs,
+    closed: false,
+    processExited: false,
+    writes: [],
+    child: monitorProcess.child,
+    outputBuffer: [],
+    pendingStdout: '',
+  };
+
+  session.child.stdout.on('data', (chunk: string | Buffer) => {
+    session.pendingStdout += chunk.toString();
+    const lines = session.pendingStdout.split(/\r?\n/);
+    session.pendingStdout = lines.pop() ?? '';
+
+    for (const line of lines) {
+      const normalized = line.trim();
+      if (normalized) {
+        session.outputBuffer.push(normalized);
+      }
+    }
+  });
+
+  session.child.stderr.on('data', (chunk: string | Buffer) => {
+    const text = chunk.toString().trim();
+    if (text) {
+      session.outputBuffer.push(text);
+    }
+  });
+
+  session.child.on('close', () => {
+    if (session.pendingStdout.trim()) {
+      session.outputBuffer.push(session.pendingStdout.trim());
+      session.pendingStdout = '';
+    }
+    session.processExited = true;
+  });
+
+  monitorSessions.set(sessionId, session);
+
+  return {
+    success: true,
+    message: 'Monitor session opened.',
+    command: monitorProcess.command,
+    mode: 'session',
+    sessionId,
+    transportType: context.transportType,
+    endpoint: context.endpoint,
+    source: 'local',
+    filters: context.filters,
+    resolvedPort: context.port,
+    resolvedBaud: context.baud,
+    resolvedEnvironment: context.resolvedEnvironment,
+    resolutionSource: context.resolutionSource,
+    monitorStatus: 'session_opened',
+    verificationStatus: 'not_requested',
+  };
+}
+
+export async function readMonitorSession(
+  opts: ReadMonitorSessionOptions
+): Promise<MonitorResult> {
+  const session = getExistingMonitorSession(opts.sessionId);
+  const durationMs = opts.durationMs ?? 2000;
+  const maxLines = opts.maxLines ?? 50;
+
+  if (durationMs > 0) {
+    await delay(durationMs);
+  }
+
+  if (session.pendingStdout.trim()) {
+    session.outputBuffer.push(session.pendingStdout.trim());
+    session.pendingStdout = '';
+  }
+
+  const output = session.outputBuffer.splice(0, maxLines);
+  const detectedPort = session.resolvedPort ?? extractResolvedMonitorPort(output);
+  if (!session.resolvedPort && detectedPort) {
+    session.resolvedPort = detectedPort;
+    session.endpoint ??= detectedPort;
+    session.transportType ??= detectTransportType(detectedPort);
+  }
+  const timedOut = output.length === 0;
+  const verification = evaluateMonitorVerification(output, {
+    expectedPatterns: opts.expectedPatterns,
+    expectedJsonFields: opts.expectedJsonFields,
+    expectedJsonNonNull: opts.expectedJsonNonNull,
+    expectedJsonValues: opts.expectedJsonValues,
+    allowedNullFields: opts.allowedNullFields,
+    expectedCycleSeconds: opts.expectedCycleSeconds,
+    expectedCycleToleranceSeconds: opts.expectedCycleToleranceSeconds,
+    minJsonMessages: opts.minJsonMessages,
+  });
+
+  return {
+    success: true,
+    message:
+      output.length > 0
+        ? `Read ${output.length} line(s) from monitor session.`
+        : 'No output was read from the monitor session during the requested window.',
+    command: session.command,
+    mode: 'session',
+    sessionId: session.sessionId,
+    transportType: session.transportType,
+    endpoint: session.endpoint,
+    source: session.source,
+    filters: session.filters,
+    resolvedPort: detectedPort ?? session.resolvedPort,
+    resolvedBaud: session.resolvedBaud,
+    resolvedEnvironment: session.resolvedEnvironment,
+    resolutionSource: session.resolutionSource,
+    monitorStatus:
+      verification.failureCategory === 'port_unavailable'
+        ? 'port_open_failed'
+        : output.length === 0
+          ? 'session_read_timeout'
+          : 'captured_output',
+    verificationStatus:
+      output.length === 0 && !opts.expectedPatterns?.length
+        ? 'not_requested'
+        : verification.verificationStatus,
+    matchedPatterns: verification.matchedPatterns,
+    healthSignals: verification.healthSignals,
+    degradedSignals: verification.degradedSignals,
+    failureSignals: verification.failureSignals,
+    parsedJsonMessages: verification.parsedJsonMessages,
+    rawOutputExcerpt: verification.rawOutputExcerpt,
+    failureCategory: verification.failureCategory,
+    retryHint: verification.retryHint,
+    output,
+    timedOut,
+  };
+}
+
+export async function writeMonitorSession(
+  opts: WriteMonitorSessionOptions
+): Promise<MonitorResult> {
+  const session = getExistingMonitorSession(opts.sessionId);
+  session.writes.push(opts.data);
+  session.child.stdin.write(opts.data);
+
+  return {
+    success: true,
+    message: `Wrote ${opts.data.length} byte(s) to monitor session.`,
+    command: session.command,
+    mode: 'session',
+    sessionId: session.sessionId,
+    transportType: session.transportType,
+    endpoint: session.endpoint,
+    source: session.source,
+    filters: session.filters,
+    resolvedPort: session.resolvedPort,
+    resolvedBaud: session.resolvedBaud,
+    resolvedEnvironment: session.resolvedEnvironment,
+    resolutionSource: session.resolutionSource,
+    monitorStatus: 'session_opened',
+    verificationStatus: 'not_requested',
+  };
+}
+
+export async function closeMonitorSession(
+  opts: CloseMonitorSessionOptions
+): Promise<MonitorResult> {
+  const session = getExistingMonitorSession(opts.sessionId);
+  session.closed = true;
+  if (!session.child.killed) {
+    session.child.kill('SIGTERM');
+  }
+
+  return {
+    success: true,
+    message: 'Monitor session closed.',
+    command: session.command,
+    mode: 'session',
+    sessionId: session.sessionId,
+    transportType: session.transportType,
+    endpoint: session.endpoint,
+    source: session.source,
+    filters: session.filters,
+    resolvedPort: session.resolvedPort,
+    resolvedBaud: session.resolvedBaud,
+    resolvedEnvironment: session.resolvedEnvironment,
+    resolutionSource: session.resolutionSource,
+    monitorStatus: 'session_closed',
     verificationStatus: 'not_requested',
   };
 }

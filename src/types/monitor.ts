@@ -16,7 +16,12 @@ export interface MonitorResult {
   success: boolean;
   message: string;
   command?: string;
-  mode?: 'instructions' | 'capture';
+  mode?: 'instructions' | 'capture' | 'session';
+  sessionId?: string;
+  transportType?: 'serial' | 'socket' | 'rfc2217';
+  endpoint?: string;
+  source?: 'local' | 'remote-bridge';
+  filters?: string[];
   resolvedPort?: string;
   resolvedBaud?: number;
   resolvedEnvironment?: string;
@@ -26,7 +31,10 @@ export interface MonitorResult {
     | 'captured_output'
     | 'no_output'
     | 'timeout'
-    | 'port_open_failed';
+    | 'port_open_failed'
+    | 'session_opened'
+    | 'session_closed'
+    | 'session_read_timeout';
   verificationStatus?:
     | 'healthy'
     | 'degraded'
@@ -54,4 +62,29 @@ export interface MonitorVerificationProfile {
   expectedCycleSeconds?: number;
   expectedCycleToleranceSeconds?: number;
   minJsonMessages?: number;
+}
+
+export interface MonitorSessionOpenConfig {
+  port?: string;
+  baud?: number;
+  projectDir?: string;
+  echo?: boolean;
+  filters?: string[];
+  raw?: boolean;
+  eol?: 'CR' | 'LF' | 'CRLF';
+}
+
+export interface MonitorSessionReadConfig extends MonitorVerificationProfile {
+  sessionId: string;
+  durationMs?: number;
+  maxLines?: number;
+}
+
+export interface MonitorSessionWriteConfig {
+  sessionId: string;
+  data: string;
+}
+
+export interface MonitorSessionCloseConfig {
+  sessionId: string;
 }

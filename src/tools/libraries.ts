@@ -8,7 +8,12 @@ import {
   parsePioJsonOutput,
   platformioExecutor,
 } from '../platformio.js';
-import type { LibraryInfo, LibraryInstallResult } from '../types.js';
+import type {
+  InstalledLibrariesResult,
+  LibraryInfo,
+  LibraryInstallResult,
+  LibrarySearchResult,
+} from '../types.js';
 import {
   LibrariesArraySchema,
   PlatformIOLibrarySearchResponseSchema,
@@ -128,6 +133,13 @@ function normalizeLibraryInfo(
         : typeof raw.versionname === 'string'
           ? raw.versionname
           : undefined,
+    packageType:
+      typeof raw.type === 'string' &&
+      ['library', 'platform', 'tool'].includes(raw.type)
+        ? (raw.type as 'library' | 'platform' | 'tool')
+        : 'unknown',
+    owner: typeof raw.owner === 'string' ? raw.owner : undefined,
+    optional: typeof raw.optional === 'boolean' ? raw.optional : undefined,
     frameworks,
     platforms,
     homepage: typeof raw.homepage === 'string' ? raw.homepage : undefined,
@@ -140,19 +152,19 @@ function normalizeLibraryInfo(
 export async function searchLibraries(
   query: string,
   limit?: number
-): Promise<LibraryInfo[]> {
+): Promise<LibrarySearchResult> {
   if (!query || query.trim().length === 0) {
     throw new LibraryError('Search query is required');
   }
 
   try {
     const result = await execPioCommand(
-      ['lib', 'search', query.trim(), '--json-output'],
+      ['pkg', 'search', query.trim(), '--json-output'],
       { timeout: 30000 }
     );
     if (result.exitCode !== 0) {
       throw new PlatformIOError(
-        `PlatformIO command failed: lib search ${query}`,
+        `PlatformIO command failed: pkg search ${query}`,
         'COMMAND_FAILED',
         {
           stderr: result.stderr,
@@ -168,13 +180,17 @@ export async function searchLibraries(
       normalizeLibraryInfo(item, 'search')
     );
     const normalized = LibrariesArraySchema.parse(libraries);
+    const items =
+      limit && limit > 0 ? normalized.slice(0, limit) : normalized;
 
-    // Apply limit if specified
-    if (limit && limit > 0) {
-      return normalized.slice(0, limit);
-    }
-
-    return normalized;
+    return {
+      items,
+      pagination: {
+        page: parsed.page ?? 1,
+        perPage: parsed.perpage ?? normalized.length,
+        total: parsed.total ?? normalized.length,
+      },
+    };
   } catch (error) {
     throw new LibraryError(
       `Failed to search libraries with query '${query}': ${error}`,
@@ -190,6 +206,7 @@ export async function installLibrary(
   libraryName: string,
   options?: {
     projectDir?: string;
+    environment?: string;
     version?: string;
   }
 ): Promise<LibraryInstallResult> {
@@ -206,32 +223,60 @@ export async function installLibrary(
   }
 
   try {
-    const args: string[] = ['lib', 'install'];
+    const failureContext: Record<string, unknown> = {
+      libraryName,
+      projectDir: options?.projectDir,
+      environment: options?.environment,
+      version: options?.version,
+    };
 
     // Build library specification with optional version
     let librarySpec = libraryName;
     if (options?.version) {
       librarySpec = `${libraryName}@${options.version}`;
     }
-    args.push(librarySpec);
-
-    // Add project directory if specified (installs locally)
-    const execOptions: { cwd?: string; timeout?: number } = { timeout: 120000 };
+    const args: string[] = ['install', '--library', librarySpec];
     if (options?.projectDir) {
       const validatedPath = validateProjectPath(options.projectDir);
-      execOptions.cwd = validatedPath;
+      args.push('--project-dir', validatedPath);
+    } else {
+      args.push('--global');
+    }
+    if (options?.environment) {
+      args.push('--environment', options.environment);
     }
 
-    const result = await platformioExecutor.execute(
-      'lib',
-      ['install', librarySpec],
-      execOptions
-    );
+    const result = await platformioExecutor.execute('pkg', args, {
+      timeout: 120000,
+    });
 
     if (result.exitCode !== 0) {
+      const stderr = result.stderr.toLowerCase();
+      let failureCategory = 'command_failed';
+      if (stderr.includes('could not find') || stderr.includes('unknown')) {
+        failureCategory = 'registry_not_found';
+      } else if (
+        stderr.includes('incompatible') ||
+        stderr.includes('requirements')
+      ) {
+        failureCategory = 'compatibility_mismatch';
+      } else if (
+        stderr.includes('network') ||
+        stderr.includes('connection') ||
+        stderr.includes('timeout')
+      ) {
+        failureCategory = 'registry_network_error';
+      } else if (stderr.includes('project') && stderr.includes('not found')) {
+        failureCategory = 'environment_missing';
+      }
       throw new LibraryError(
         `Failed to install library '${librarySpec}': ${result.stderr}`,
-        { library: librarySpec, stderr: result.stderr }
+        {
+          ...failureContext,
+          library: librarySpec,
+          stderr: result.stderr,
+          failureCategory,
+        }
       );
     }
 
@@ -256,7 +301,7 @@ export async function installLibrary(
  */
 export async function listInstalledLibraries(
   projectDir?: string
-): Promise<LibraryInfo[]> {
+): Promise<InstalledLibrariesResult> {
   try {
     const execOptions: { cwd?: string; timeout?: number } = { timeout: 30000 };
     if (projectDir) {
@@ -265,13 +310,13 @@ export async function listInstalledLibraries(
     }
 
     const result = await platformioExecutor.execute(
-      'lib',
+      'pkg',
       ['list', '--json-output'],
       execOptions
     );
     if (result.exitCode !== 0) {
       throw new PlatformIOError(
-        'PlatformIO command failed: lib list',
+        'PlatformIO command failed: pkg list',
         'COMMAND_FAILED',
         {
           stderr: result.stderr,
@@ -288,7 +333,9 @@ export async function listInstalledLibraries(
     );
     const normalized = LibrariesArraySchema.parse(libraries);
 
-    return normalized;
+    return {
+      items: normalized,
+    };
   } catch (error) {
     // If no libraries are installed, return empty array
     if (error instanceof PlatformIOError) {
@@ -297,7 +344,9 @@ export async function listInstalledLibraries(
         errorMessage.includes('no libraries') ||
         errorMessage.includes('empty')
       ) {
-        return [];
+        return {
+          items: [],
+        };
       }
     }
 
@@ -403,9 +452,10 @@ export async function getLibraryInfo(
 ): Promise<LibraryInfo | null> {
   try {
     const results = await searchLibraries(libraryNameOrId, 50);
+    const items = results.items;
 
     // Try to find exact match first
-    const exactMatch = results.find(
+    const exactMatch = items.find(
       (lib) =>
         lib.name.toLowerCase() === libraryNameOrId.toLowerCase() ||
         lib.id?.toString() === libraryNameOrId
@@ -416,7 +466,7 @@ export async function getLibraryInfo(
     }
 
     // Return first result if available
-    return results.length > 0 ? results[0] : null;
+    return items.length > 0 ? items[0] : null;
   } catch (error) {
     throw new LibraryError(
       `Failed to get library info for '${libraryNameOrId}': ${error}`,

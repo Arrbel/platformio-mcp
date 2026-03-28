@@ -19,6 +19,9 @@ export interface LibraryInfo {
   authors?: LibraryAuthor[];
   repository?: LibraryRepository;
   version?: string;
+  packageType?: 'library' | 'platform' | 'tool' | 'unknown';
+  owner?: string;
+  optional?: boolean;
   frameworks?: string[];
   platforms?: string[];
   homepage?: string;
@@ -45,6 +48,9 @@ export const LibraryInfoSchema = z.object({
     })
     .optional(),
   version: z.string().optional(),
+  packageType: z.enum(['library', 'platform', 'tool', 'unknown']).optional(),
+  owner: z.string().optional(),
+  optional: z.boolean().optional(),
   frameworks: z.array(z.string()).optional(),
   platforms: z.array(z.string()).optional(),
   homepage: z.string().optional(),
@@ -61,6 +67,15 @@ export const PlatformIOLibrarySearchResponseSchema = z.object({
 export interface LibrarySearchConfig {
   query: string;
   limit?: number;
+}
+
+export interface LibrarySearchResult {
+  items: LibraryInfo[];
+  pagination: {
+    page: number;
+    perPage: number;
+    total: number;
+  };
 }
 
 export const LibrarySearchConfigSchema = z.object({
@@ -84,4 +99,8 @@ export interface LibraryInstallResult {
   success: boolean;
   library: string;
   message: string;
+}
+
+export interface InstalledLibrariesResult {
+  items: LibraryInfo[];
 }

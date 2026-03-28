@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import * as platformioModule from '../src/platformio.js';
 import { platformioExecutor } from '../src/platformio.js';
+import { inspectProject } from '../src/tools/projects.js';
 import { getBoardInfo, listBoards } from '../src/tools/boards.js';
 import { buildProject } from '../src/tools/build.js';
 import {
@@ -108,7 +109,7 @@ describe('PlatformIO 6.1.19 compatibility', () => {
 
     const libraries = await searchLibraries('ArduinoJson', 10);
 
-    expect(libraries).toEqual([
+    expect(libraries.items).toEqual([
       expect.objectContaining({
         id: 64,
         name: 'ArduinoJson',
@@ -118,6 +119,11 @@ describe('PlatformIO 6.1.19 compatibility', () => {
         platforms: ['atmelavr'],
       }),
     ]);
+    expect(libraries.pagination).toEqual({
+      page: 1,
+      perPage: 10,
+      total: 2,
+    });
   });
 
   it('accepts installed library entries without an id field', async () => {
@@ -144,7 +150,7 @@ describe('PlatformIO 6.1.19 compatibility', () => {
 
     const libraries = await listInstalledLibraries('E:/firmware');
 
-    expect(libraries).toEqual([
+    expect(libraries.items).toEqual([
       expect.objectContaining({
         id: undefined,
         name: 'ArduinoJson',
@@ -200,6 +206,113 @@ framework = arduino
       } else {
         process.env.PLATFORMIO_CLI_PATH = originalBinary;
       }
+    }
+  });
+
+  it('reads project metadata when PlatformIO 6.1.19 returns a top-level object keyed by environment name', async () => {
+    const projectDir = await createProjectFixture(`
+[platformio]
+default_envs = native
+
+[env:native]
+platform = native
+`);
+
+    vi.spyOn(platformioModule, 'execPioCommand').mockResolvedValue({
+      stdout: JSON.stringify({
+        native: {
+          build_type: 'release',
+          env_name: 'native',
+          includes: {
+            build: [`${projectDir}/src`],
+          },
+          defines: ['PLATFORMIO=60119'],
+          cc_path: 'gcc',
+          cxx_path: 'g++',
+          gdb_path: '',
+          prog_path: `${projectDir}/.pio/build/native/program.exe`,
+          compiler_type: null,
+          targets: [],
+          extra: {
+            flash_images: [],
+          },
+        },
+      }),
+      stderr: '',
+      exitCode: 0,
+    });
+
+    try {
+      const result = await inspectProject(projectDir);
+
+      expect(result.metadataAvailable).toBe(true);
+      expect(result.metadata?.envName).toBe('native');
+      expect(result.programPath).toContain('program.exe');
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts object-based metadata targets from PlatformIO project metadata output', async () => {
+    const projectDir = await createProjectFixture(`
+[platformio]
+default_envs = esp32-s3-devkitc-1
+
+[env:esp32-s3-devkitc-1]
+platform = espressif32
+board = esp32-s3-devkitc-1
+framework = arduino
+`);
+
+    vi.spyOn(platformioModule, 'execPioCommand').mockResolvedValue({
+      stdout: JSON.stringify({
+        'esp32-s3-devkitc-1': {
+          build_type: 'release',
+          env_name: 'esp32-s3-devkitc-1',
+          includes: {
+            build: [`${projectDir}/src`],
+          },
+          defines: ['PLATFORMIO=60119'],
+          cc_path: 'xtensa-esp32s3-elf-gcc',
+          cxx_path: 'xtensa-esp32s3-elf-g++',
+          prog_path: `${projectDir}/.pio/build/esp32-s3-devkitc-1/firmware.elf`,
+          compiler_type: 'gcc',
+          targets: [
+            {
+              name: 'upload',
+              title: 'Upload',
+              description: null,
+              group: 'Platform',
+            },
+            {
+              name: 'erase',
+              title: 'Erase Flash',
+              description: null,
+              group: 'Platform',
+            },
+          ],
+          extra: {
+            flash_images: [],
+          },
+        },
+      }),
+      stderr: '',
+      exitCode: 0,
+    });
+
+    try {
+      const result = await inspectProject(projectDir);
+
+      expect(result.metadataAvailable).toBe(true);
+      expect(result.metadata?.envName).toBe('esp32-s3-devkitc-1');
+      expect(result.targets).toEqual(
+        expect.arrayContaining(['upload', 'erase'])
+      );
+      expect(result.metadata?.targets).toEqual(
+        expect.arrayContaining(['upload', 'erase'])
+      );
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
     }
   });
 });
