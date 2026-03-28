@@ -10,6 +10,8 @@ The format is intentionally pragmatic rather than release-automation-oriented:
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-28
+
 ### Added
 - Added official-alignment research and practice docs in [docs/platformio-official-best-practices-for-mcp.md](/E:/program/platformio-mcp/docs/platformio-official-best-practices-for-mcp.md), [docs/platformio-core-cli-official-doc-analysis.md](/E:/program/platformio-mcp/docs/platformio-core-cli-official-doc-analysis.md), and [docs/platformio-cli-local-practice.md](/E:/program/platformio-mcp/docs/platformio-cli-local-practice.md).
 - Added project inspection enrichment via `pio project metadata --json-output` in [src/tools/projects.ts](/E:/program/platformio-mcp/src/tools/projects.ts) and [src/platformio.ts](/E:/program/platformio-mcp/src/platformio.ts).

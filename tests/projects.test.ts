@@ -42,6 +42,9 @@ monitor_filters = esp32_exception_decoder, time
 platform = native
 test_filter = *
 `);
+    vi.spyOn(platformioModule, 'getProjectMetadata').mockRejectedValue(
+      new Error('metadata unavailable')
+    );
 
     try {
       const inspection = await inspectProject(projectDir);

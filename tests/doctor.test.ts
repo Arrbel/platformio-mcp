@@ -17,6 +17,16 @@ describe('doctor', () => {
     vi.spyOn(platformioModule, 'getPlatformIOBinaryPath').mockResolvedValue(
       undefined
     );
+    vi.spyOn(platformioModule, 'detectHostCppToolchain').mockResolvedValue({
+      available: false,
+      shellCallable: false,
+      detectedCompilers: [],
+      packageManager: 'none',
+    });
+    vi.spyOn(platformioModule, 'probeSerialPortBusy').mockResolvedValue({
+      port: undefined,
+      busy: false,
+    });
     vi.spyOn(projectsModule, 'inspectProject').mockResolvedValue({
       projectDir: 'E:/firmware',
       platformioIniPath: 'E:/firmware/platformio.ini',
@@ -67,17 +77,23 @@ describe('doctor', () => {
     vi.spyOn(platformioModule, 'getPlatformIOVersion').mockResolvedValue(
       '6.1.19'
     );
-    vi.spyOn(platformioModule, 'execPioCommand')
-      .mockResolvedValueOnce({
-        stdout: 'Usage: pio remote [OPTIONS] COMMAND [ARGS]...',
-        stderr: '',
-        exitCode: 0,
-      })
-      .mockResolvedValueOnce({
-        stdout: '',
-        stderr: '',
-        exitCode: 1,
-      });
+    vi.spyOn(platformioModule, 'getPlatformIOPythonExecutable').mockResolvedValue(
+      'C:/Users/Arrebol/.platformio/penv/Scripts/python.exe'
+    );
+    vi.spyOn(platformioModule, 'detectHostCppToolchain').mockResolvedValue({
+      available: false,
+      shellCallable: false,
+      detectedCompilers: [],
+      packageManager: 'winget',
+    });
+    vi.spyOn(platformioModule, 'probeSerialPortBusy').mockResolvedValue({
+      port: 'COM7',
+      busy: false,
+    });
+    vi.spyOn(platformioModule, 'checkRemoteCliAvailable').mockResolvedValue({
+      available: true,
+      installTriggered: false,
+    });
     vi.spyOn(projectsModule, 'inspectProject').mockResolvedValue({
       projectDir: 'E:/firmware',
       platformioIniPath: 'E:/firmware/platformio.ini',
@@ -143,6 +159,19 @@ describe('doctor', () => {
     vi.spyOn(platformioModule, 'getPlatformIOVersion').mockResolvedValue(
       '6.1.19'
     );
+    vi.spyOn(platformioModule, 'getPlatformIOPythonExecutable').mockResolvedValue(
+      'C:/Users/Arrebol/.platformio/penv/Scripts/python.exe'
+    );
+    vi.spyOn(platformioModule, 'detectHostCppToolchain').mockResolvedValue({
+      available: false,
+      shellCallable: false,
+      detectedCompilers: [],
+      packageManager: 'winget',
+    });
+    vi.spyOn(platformioModule, 'probeSerialPortBusy').mockResolvedValue({
+      port: undefined,
+      busy: false,
+    });
     vi.spyOn(platformioModule, 'checkRemoteCliAvailable').mockResolvedValue({
       available: true,
       installTriggered: false,
