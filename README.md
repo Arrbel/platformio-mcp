@@ -66,6 +66,19 @@ Add to your MCP client (Claude Desktop, Cline, Cursor, etc.):
 
 </details>
 
+## What This Server Is
+
+`platformio-mcp-server` is an execution-layer MCP server for PlatformIO projects.
+
+Its current focus is:
+
+- inspect real PlatformIO projects without forcing higher-level agents to guess `environment` resolution
+- run build / upload / monitor flows and return structured results instead of raw CLI text
+- keep serial monitoring usable both as bounded capture and as a persistent session
+- diagnose the local host with `doctor` and close low-risk repair loops with `repair_environment`
+
+It is intentionally not a workflow orchestrator, not a generic terminal, and not a remote-device platform yet.
+
 ## 21 MCP Tools
 
 | Category | Tools | Description |
@@ -79,6 +92,23 @@ Add to your MCP client (Claude Desktop, Cline, Cursor, etc.):
 | **Diagnostics** | `doctor` `repair_environment` | Diagnose environment/project readiness, surface repair suggestions, and execute controlled low-risk repairs |
 
 All tools return structured JSON with `status`, `summary`, `data`, `warnings`, `nextActions`, and unified `ExecutionResultMeta`.
+
+## Current Recommended Entry Points
+
+If you are using this server on a real project, start here:
+
+1. `doctor`
+2. `repair_environment` if `doctor` reports recommended fixes
+3. `inspect_project`
+4. `build_project`
+5. `upload_firmware`
+6. `open_monitor_session` / `read_monitor_session` / `close_monitor_session`
+
+Use `start_monitor` when you only want:
+
+- instruction-mode guidance
+- a bounded one-shot serial capture
+- one-shot profile verification instead of a longer-lived session
 
 ## Typical Workflow
 
@@ -120,6 +150,65 @@ Related read-only tools:
 - `generate_compile_commands`
   - returns `generationStatus`, `compileCommandsPath`, `resolvedEnvironment`, and `failureCategory`
 
+Important project-truth fields exposed by `inspect_project` now include:
+
+- `defaultEnvironments`
+- `resolvedEnvironment`
+- `environmentResolution`
+- `resolutionReason`
+- `resolutionWarnings`
+- `metadataAvailable`
+- `targets`
+- `toolchain`
+- `includes`
+- `defines`
+- `programPath`
+- `configComplexitySignals`
+- `projectCapabilities`
+
+This means higher-level agents can distinguish:
+
+- config-derived truth from execution-derived truth
+- single-environment fallback from explicit default environment resolution
+- genuinely unresolved projects from projects that simply have no metadata yet
+- simple projects from projects using risky PlatformIO features like `extends`, `extra_configs`, or interpolation
+
+## Device And Transport Semantics
+
+`list_devices` is no longer just a raw serial-port dump.
+
+It now normalizes official PlatformIO device discovery into structured fields such as:
+
+- `deviceType`
+- `transportType`
+- `detectionSource`
+- `uploadCandidate`
+- `monitorCandidate`
+
+This same device classification is reused by `doctor`, upload resolution, and monitor resolution so the server does not maintain three different guesses about which port matters.
+
+## Upload Semantics
+
+`upload_firmware` is intended to be directly consumable by an Agent without post-parsing CLI text.
+
+Key fields now include:
+
+- `resolvedPort`
+- `resolvedEnvironment`
+- `resolutionSource`
+- `uploadStatus`
+- `failureCategory`
+- `retryHint`
+
+Current upload status modeling covers common cases such as:
+
+- `uploaded`
+- `device_not_found`
+- `port_unavailable`
+- `manual_boot_required`
+- `uploader_failed`
+- `unknown_failure`
+
 ## Environment Closure Loop
 
 `doctor` and `repair_environment` now form a minimal environment-closure loop for the current host.
@@ -143,6 +232,19 @@ Recommended usage:
 3. If the plan looks safe, rerun `repair_environment` without `dryRun`
 4. Use `recheckSummary` to decide whether to continue with `inspect_project`, `build_project`, `upload_firmware`, or `start_monitor`
 
+Current real host closure on this Windows machine has already been validated for:
+
+- local PlatformIO CLI path activation when `pio` is not callable from `PATH`
+- confirmation-gated host compiler installation via `winget`
+- post-repair `doctor` recheck semantics
+
+The repair loop is still intentionally conservative:
+
+- no process killing for busy serial ports
+- no automatic driver installation
+- no generic package-manager abstraction
+- no remote workflow repair logic
+
 ## Monitor Execution Modes
 
 There are now two intended monitor paths:
@@ -165,6 +267,27 @@ Current structured monitor/session results stabilize fields such as:
 - `verificationStatus`
 - `failureCategory`
 - `retryHint`
+
+Structured monitor verification continues to use a deliberately small rule set:
+
+- `expectedPatterns`
+- `expectedJsonFields`
+- `expectedJsonNonNull`
+- `expectedJsonValues`
+- `allowedNullFields`
+- `expectedCycleSeconds`
+- `expectedCycleToleranceSeconds`
+- `minJsonMessages`
+
+Current verification results distinguish:
+
+- `healthy`
+- `degraded`
+- `failed`
+- `not_requested`
+- `indeterminate`
+
+This keeps monitor verification useful for real device closure without turning the server into a private protocol engine.
 
 ## Supported Platforms
 
@@ -209,6 +332,15 @@ Current direct evidence is recorded in:
 
 Session-oriented hardware closure notes are tracked in [docs/phase-a2-hardware-closure.md](/E:/program/platformio-mcp/docs/phase-a2-hardware-closure.md).
 
+Current explicit validation boundary:
+
+- directly revalidated on one real ESP32-S3 node
+- directly revalidated on real upload + persistent monitor-session closure
+- directly revalidated on local PlatformIO CLI integration tests
+- not yet claimed across a broader hardware matrix
+- not yet claimed for remote workflows
+- not a generic shell/terminal server
+
 ## Development
 
 ```bash
@@ -219,6 +351,14 @@ npm run test:integration  # PlatformIO CLI integration tests
 npm run lint
 npm run format:check
 ```
+
+Current local verification baseline used before release preparation:
+
+- `npm run build`
+- `npm run lint`
+- `npm test -- --run`
+- `npm run test:integration`
+- `npm pack --dry-run`
 
 ## Attribution
 
