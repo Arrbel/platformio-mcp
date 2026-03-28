@@ -7,6 +7,7 @@ import * as devicesModule from '../src/tools/devices.js';
 import * as librariesModule from '../src/tools/libraries.js';
 import * as monitorModule from '../src/tools/monitor.js';
 import * as projectsModule from '../src/tools/projects.js';
+import * as repairModule from '../src/tools/repair.js';
 import * as uploadModule from '../src/tools/upload.js';
 import { invokeRegisteredTool } from '../src/tools/registry.js';
 
@@ -20,6 +21,19 @@ describe('execution result meta', () => {
       nodeVersion: 'v22.14.0',
       platformio: { installed: true, version: '6.1.19' },
       devices: { count: 0, items: [] },
+      projectReadiness: { status: 'ready', issues: [], details: [] },
+      deviceReadiness: { status: 'ready', issues: [], details: [] },
+      monitorReadiness: { status: 'ready', issues: [], details: [] },
+      remoteReadiness: { status: 'ready', issues: [], details: [] },
+      detectedProblems: [],
+      fixSuggestions: [],
+      repairReadiness: {
+        hasAutoFixes: false,
+        hasConfirmationRequiredFixes: false,
+        hasManualOnlyFixes: false,
+        recommendedFixIds: [],
+        manualProblemCodes: [],
+      },
       readyForBuild: false,
       readyForUpload: false,
       readyForMonitor: false,
@@ -29,6 +43,9 @@ describe('execution result meta', () => {
 
     const response = await invokeRegisteredTool('doctor', {});
 
+    expect(response.status).toBe('ok');
+    expect(response.summary).toMatch(/platformio cli ready/i);
+    expect(response.summary).toMatch(/0 problem\(s\)/i);
     expect(response.data).toEqual(
       expect.objectContaining({
         meta: expect.objectContaining({
@@ -213,6 +230,138 @@ describe('execution result meta', () => {
     );
   });
 
+  it('adds execution meta to repair responses', async () => {
+    vi.spyOn(repairModule, 'repairEnvironment').mockResolvedValue({
+      repairStatus: 'dry_run',
+      attemptedFixes: [],
+      appliedFixes: [],
+      skippedFixes: [],
+      failedFixes: [],
+      recheckSummary: {
+        resolvedProblemCodes: [],
+        remainingProblemCodes: [],
+        newProblemCodes: [],
+        stillBlocking: false,
+        readyForBuild: true,
+        readyForUpload: false,
+        readyForMonitor: false,
+      },
+      postRepairDoctor: {
+        nodeVersion: 'v22.14.0',
+        platformio: { installed: true, version: '6.1.19', shellCallable: true },
+        devices: { count: 0, items: [] },
+        detectedProblems: [],
+        fixSuggestions: [],
+        repairReadiness: {
+          hasAutoFixes: false,
+          hasConfirmationRequiredFixes: false,
+          hasManualOnlyFixes: false,
+          recommendedFixIds: [],
+          manualProblemCodes: [],
+        },
+        readyForBuild: true,
+        readyForUpload: false,
+        readyForMonitor: false,
+        blockingIssues: [],
+        warnings: [],
+      },
+    });
+
+    const response = await invokeRegisteredTool('repair_environment', {
+      dryRun: true,
+    });
+
+    expect(response.status).toBe('ok');
+    expect(response.summary).toMatch(/no recommended fixes are currently needed/i);
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'repair',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to open_monitor_session responses', async () => {
+    vi.spyOn(monitorModule, 'openMonitorSession').mockResolvedValue({
+      success: true,
+      message: 'Monitor session opened.',
+      sessionId: 'session-1',
+      mode: 'session',
+      resolvedPort: 'COM9',
+      resolvedBaud: 115200,
+      resolvedEnvironment: 'esp32dev',
+      resolutionSource: 'explicit_argument',
+      monitorStatus: 'session_opened',
+      verificationStatus: 'not_requested',
+      transportType: 'serial',
+      endpoint: 'COM9',
+      source: 'local',
+    });
+
+    const response = await invokeRegisteredTool('open_monitor_session', {
+      port: 'COM9',
+      baud: 115200,
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'monitor',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+          resolvedPort: 'COM9',
+          resolvedBaud: 115200,
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to project target listing responses', async () => {
+    vi.spyOn(projectsModule, 'listProjectTargets').mockResolvedValue({
+      projectDir: 'E:/firmware',
+      items: ['buildprog', 'upload', 'compiledb'],
+    });
+
+    const response = await invokeRegisteredTool('list_project_targets', {
+      projectDir: 'E:/firmware',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
+
+  it('adds execution meta to compilation database generation responses', async () => {
+    vi.spyOn(projectsModule, 'generateProjectCompilationDatabase').mockResolvedValue({
+      success: true,
+      command: 'pio run -t compiledb',
+      outputPath: 'E:/firmware/compile_commands.json',
+    });
+
+    const response = await invokeRegisteredTool('generate_compile_commands', {
+      projectDir: 'E:/firmware',
+    });
+
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          operationType: 'inspect',
+          executionStatus: 'succeeded',
+          verificationStatus: 'not_requested',
+        }),
+      })
+    );
+  });
+
   it('adds execution meta to clean responses', async () => {
     vi.spyOn(buildModule, 'cleanProject').mockResolvedValue({
       success: true,
@@ -235,12 +384,19 @@ describe('execution result meta', () => {
   });
 
   it('adds execution meta to library search responses', async () => {
-    vi.spyOn(librariesModule, 'searchLibraries').mockResolvedValue([
-      {
-        id: 64,
-        name: 'ArduinoJson',
+    vi.spyOn(librariesModule, 'searchLibraries').mockResolvedValue({
+      items: [
+        {
+          id: 64,
+          name: 'ArduinoJson',
+        },
+      ],
+      pagination: {
+        page: 1,
+        perPage: 20,
+        total: 1,
       },
-    ]);
+    });
 
     const response = await invokeRegisteredTool('search_libraries', {
       query: 'ArduinoJson',
@@ -281,12 +437,14 @@ describe('execution result meta', () => {
   });
 
   it('adds execution meta to installed library listing responses', async () => {
-    vi.spyOn(librariesModule, 'listInstalledLibraries').mockResolvedValue([
-      {
-        name: 'ArduinoJson',
-        version: '7.4.3',
-      },
-    ]);
+    vi.spyOn(librariesModule, 'listInstalledLibraries').mockResolvedValue({
+      items: [
+        {
+          name: 'ArduinoJson',
+          version: '7.4.3',
+        },
+      ],
+    });
 
     const response = await invokeRegisteredTool('list_installed_libraries', {
       projectDir: 'E:/firmware',

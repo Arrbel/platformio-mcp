@@ -30,7 +30,7 @@ export interface ToolResponse<TData = unknown> {
 }
 
 export interface ExecutionResultMeta {
-  operationType: 'doctor' | 'inspect' | 'build' | 'upload' | 'monitor';
+  operationType: 'doctor' | 'inspect' | 'build' | 'upload' | 'monitor' | 'repair';
   executionStatus: 'succeeded' | 'failed' | 'blocked' | 'not_applicable';
   verificationStatus:
     | 'healthy'

@@ -12,15 +12,22 @@ describe('registry compatibility', () => {
       'list_devices',
       'init_project',
       'inspect_project',
+      'list_project_targets',
+      'generate_compile_commands',
       'list_environments',
       'build_project',
       'clean_project',
       'upload_firmware',
       'start_monitor',
+      'open_monitor_session',
+      'read_monitor_session',
+      'write_monitor_session',
+      'close_monitor_session',
       'search_libraries',
       'install_library',
       'list_installed_libraries',
       'doctor',
+      'repair_environment',
     ]);
   });
 
@@ -65,6 +72,30 @@ describe('registry compatibility', () => {
         required: ['board', 'projectDir'],
       },
       inspect_project: {
+        type: 'object',
+        properties: {
+          projectDir: {
+            type: 'string',
+            description: 'Path to the PlatformIO project directory',
+          },
+        },
+        required: ['projectDir'],
+      },
+      list_project_targets: {
+        type: 'object',
+        properties: {
+          projectDir: {
+            type: 'string',
+            description: 'Path to the PlatformIO project directory',
+          },
+          environment: {
+            type: 'string',
+            description: 'Optional environment name to scope available targets',
+          },
+        },
+        required: ['projectDir'],
+      },
+      generate_compile_commands: {
         type: 'object',
         properties: {
           projectDir: {
@@ -133,6 +164,50 @@ describe('registry compatibility', () => {
           minJsonMessages: { type: 'number' },
         },
       },
+      open_monitor_session: {
+        type: 'object',
+        properties: {
+          port: { type: 'string' },
+          baud: { type: 'number' },
+          projectDir: { type: 'string' },
+          echo: { type: 'boolean' },
+          filters: { type: 'array', items: { type: 'string' } },
+          raw: { type: 'boolean' },
+          eol: { type: 'string', enum: ['CR', 'LF', 'CRLF'] },
+        },
+      },
+      read_monitor_session: {
+        type: 'object',
+        properties: {
+          sessionId: { type: 'string' },
+          durationMs: { type: 'number' },
+          maxLines: { type: 'number' },
+          expectedPatterns: { type: 'array', items: { type: 'string' } },
+          expectedJsonFields: { type: 'array', items: { type: 'string' } },
+          expectedJsonNonNull: { type: 'array', items: { type: 'string' } },
+          expectedJsonValues: { type: 'object' },
+          allowedNullFields: { type: 'array', items: { type: 'string' } },
+          expectedCycleSeconds: { type: 'number' },
+          expectedCycleToleranceSeconds: { type: 'number' },
+          minJsonMessages: { type: 'number' },
+        },
+        required: ['sessionId'],
+      },
+      write_monitor_session: {
+        type: 'object',
+        properties: {
+          sessionId: { type: 'string' },
+          data: { type: 'string' },
+        },
+        required: ['sessionId', 'data'],
+      },
+      close_monitor_session: {
+        type: 'object',
+        properties: {
+          sessionId: { type: 'string' },
+        },
+        required: ['sessionId'],
+      },
       search_libraries: {
         type: 'object',
         properties: {
@@ -163,6 +238,17 @@ describe('registry compatibility', () => {
             type: 'string',
             description: 'Optional PlatformIO project directory to inspect',
           },
+        },
+      },
+      repair_environment: {
+        type: 'object',
+        properties: {
+          problemCodes: { type: 'array', items: { type: 'string' } },
+          fixIds: { type: 'array', items: { type: 'string' } },
+          projectDir: { type: 'string' },
+          allowInstall: { type: 'boolean' },
+          allowShellProfileHints: { type: 'boolean' },
+          dryRun: { type: 'boolean' },
         },
       },
     });

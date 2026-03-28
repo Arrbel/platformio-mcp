@@ -18,12 +18,33 @@ export const doctorToolDefinition = defineTool({
   paramsSchema: DoctorParamsSchema,
   handler: async ({ projectDir }: { projectDir?: string }) => {
     const report = await doctor({ projectDir });
+    const blockingProblemCount = report.detectedProblems.filter(
+      (problem) => problem.blocking
+    ).length;
+    const problemCount = report.detectedProblems.length;
+    const hasAdvisoryProblems =
+      problemCount > 0 && blockingProblemCount === 0;
+    const status =
+      blockingProblemCount > 0
+        ? 'error'
+        : hasAdvisoryProblems || report.warnings.length > 0
+          ? 'warning'
+          : 'ok';
+    const summaryParts = [
+      `PlatformIO CLI ${report.platformio.installed ? 'ready' : 'not ready'}`,
+      `project ${report.projectReadiness.status}`,
+      `device ${report.deviceReadiness.status}`,
+      `monitor ${report.monitorReadiness.status}`,
+      `${problemCount} problem(s)`,
+    ];
+
+    if (blockingProblemCount > 0) {
+      summaryParts.push(`${blockingProblemCount} blocking`);
+    }
+
     return createToolResponse({
-      status: report.warnings.length > 0 ? 'warning' : 'ok',
-      summary:
-        report.warnings.length > 0
-          ? 'Environment checks completed with warnings.'
-          : 'Environment checks completed successfully.',
+      status,
+      summary: `Doctor completed: ${summaryParts.join('; ')}.`,
       data: withExecutionMeta(report, {
         operationType: 'doctor',
         executionStatus: 'succeeded',
@@ -31,11 +52,23 @@ export const doctorToolDefinition = defineTool({
       }),
       warnings: report.warnings,
       nextActions: [
+        ...(report.repairReadiness.recommendedFixIds.length > 0
+          ? [
+              {
+                tool: 'repair_environment',
+                reason: 'Preview the recommended environment repair plan.',
+                arguments: {
+                  ...(projectDir ? { projectDir } : {}),
+                  dryRun: true,
+                },
+              },
+            ]
+          : []),
         ...(projectDir
           ? [
               {
                 tool: 'inspect_project',
-                reason: 'Review parsed PlatformIO configuration.',
+                reason: 'Review parsed PlatformIO configuration and resolved environment truth.',
                 arguments: { projectDir },
               },
             ]
