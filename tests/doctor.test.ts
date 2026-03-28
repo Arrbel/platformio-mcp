@@ -61,6 +61,9 @@ describe('doctor', () => {
     vi.spyOn(platformioModule, 'getPlatformIOBinaryPath').mockResolvedValue(
       'C:/Users/Arrebol/.platformio/penv/Scripts/pio.exe'
     );
+    vi.spyOn(platformioModule, 'isPlatformIOShellCallable').mockResolvedValue(
+      false
+    );
     vi.spyOn(platformioModule, 'getPlatformIOVersion').mockResolvedValue(
       '6.1.19'
     );
@@ -123,13 +126,8 @@ describe('doctor', () => {
     expect(report.projectReadiness.status).toBe('ready');
     expect(report.deviceReadiness.status).toBe('ready');
     expect(report.monitorReadiness.status).toBe('ready');
-    expect(report.remoteReadiness.status).toBe('warning');
-    expect(report.remoteReadiness.issues).toEqual(
-      expect.arrayContaining(['remote_not_ready'])
-    );
-    expect(report.remoteReadiness.details).toEqual(
-      expect.arrayContaining([expect.stringMatching(/not ready/i)])
-    );
+    expect(report.remoteReadiness.status).toBe('ready');
+    expect(report.remoteReadiness.issues).toEqual([]);
   });
 
   it('flags shell-callability and missing environments as blocked readiness issues', async () => {
