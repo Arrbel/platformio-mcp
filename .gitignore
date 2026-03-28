@@ -53,3 +53,7 @@ temp/
 
 # MCP specific
 *.mcp.json
+
+# Local AI workflow state
+.codex/
+.claude/

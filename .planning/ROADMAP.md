@@ -4,7 +4,7 @@
 
 ## Overview
 
-This roadmap reflects the current brownfield state of the project. Phase A1 is largely complete in code and validation, while Phase A2 remains blocked by the lack of a safe, disposable flash target. Phases 4-6 cover milestone v1.1 Technical Debt Resolution.
+This roadmap keeps the completed 1-6 phases as implementation history, then adds the current consolidation pass that aligns docs/state with actual execution-layer reality on the current host and real device.
 
 ## Phases
 
@@ -14,8 +14,21 @@ This roadmap reflects the current brownfield state of the project. Phase A1 is l
 - [x] **Phase 4: Monitor Interface Refactor + CI Tests** - Refactor startMonitor signature, extract monitor profiles, and establish CI integration test layer
 - [x] **Phase 5: Registry Split + Compatibility Verification** - Split registry into per-tool modules and verify all interfaces remain backward compatible
 - [x] **Phase 6: Code Organization Cleanup** - Split types by domain, deduplicate upload logic, and derive version from package.json
+- [-] **Phase 7: Execution-Layer Consolidation** - Revalidate current real-use MCP flows and align README / changelog / planning state with verified reality
 
 ## Phase Details
+
+### Phase 7: Execution-Layer Consolidation
+
+**Goal:** Make the current `platformio-mcp` state easy to trust by aligning tool-facing docs, planning state, and fresh real-host verification around the execution layer that already exists.
+**Depends on:** Phase 6
+**Success Criteria** (what must be TRUE):
+  1. README, changelog, and planning state no longer materially contradict the current tool surface.
+  2. The current real Windows host is freshly revalidated for `doctor`, `repair_environment`, `inspect_project`, `list_project_targets`, and `generate_compile_commands`.
+  3. The current real ESP32 node is freshly revalidated for `list_devices` plus monitor session `open -> read -> close`.
+  4. Historical hardware-closure evidence remains documented, but is clearly separated from what was rechecked in the current session.
+**Plans:** In progress
+**Status:** In progress — fresh read-only host/device validation rerun on 2026-03-28
 
 ### Phase 1: Phase A1
 
@@ -116,6 +129,7 @@ Plans:
 | 4. Monitor Interface Refactor + CI Tests | 3/3 | Complete | 2026-03-17 |
 | 5. Registry Split + Compatibility Verification | 3/3 | Complete | 2026-03-17 |
 | 6. Code Organization Cleanup | 3/3 | Complete | 2026-03-17 |
+| 7. Execution-Layer Consolidation | —/— | In progress | — |
 
 ## Notes
 
@@ -126,4 +140,4 @@ Plans:
 
 ---
 *Roadmap created: 2026-03-17*
-*Last updated: 2026-03-17 — phase 6 completed, milestone v1.1 complete*
+*Last updated: 2026-03-28 — phase 7 consolidation started after fresh host/device validation rerun*
